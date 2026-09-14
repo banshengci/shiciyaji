@@ -1,0 +1,57 @@
+name: Build Windows
+
+# 本机未安装 Visual Studio 的 C++ 桌面工作负载（只有 VS Installer 残留，
+# MSVC 与 CMake 均缺失），故 Windows 产物由云端 windows-latest runner 构建：
+# 该镜像自带 VS 2022（含 C++ 工作负载）与 CMake。
+#
+# 触发：推送 v* 标签（与 iOS 工作流一致，一次发版出齐两端），
+#       或在 Actions 页面手动 Run workflow。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Flutter（锁定与本地一致的版本）
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: 烧入 Flutter 桌面支持
+        run: flutter config --enable-windows-desktop
+
+      - name: 拉取依赖
+        run: flutter pub get
+
+      - name: 构建 Release
+        run: flutter build windows --release
+
+      - name: 校验产物
+        shell: pwsh
+        run: |
+          Get-ChildItem build/windows/x64/runner/Release | Select-Object Name, Length | Format-Table -AutoSize
+          $exe = "build/windows/x64/runner/Release/shici_yaji.exe"
+          if (-not (Test-Path $exe)) { throw "未找到 $exe" }
+
+      - name: 打包（exe 依赖同目录的 dll 与 data，必须整目录分发）
+        shell: pwsh
+        run: |
+          cd build/windows/x64/runner/Release
+          Compress-Archive -Path * -DestinationPath "$env:GITHUB_WORKSPACE/shici_yaji-windows-x64.zip" -Force
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: shici-yaji-windows
+          path: shici_yaji-windows-x64.zip
+          retention-days: 30

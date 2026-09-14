@@ -89,3 +89,6 @@ design/app_icon_backup_*/
 # Flutter 工具本机状态（含本机 SDK 绝对路径，不入库）
 .flutter
 .flutter_tool_state
+
+# 本机构建产物（三端安装包，不入库）
+dist/
