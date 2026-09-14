@@ -70,8 +70,8 @@ ios/Flutter/Generated.xcconfig
 **/ios/Runner.xcodeproj/xcuserdata/
 **/ios/Runner.xcodeproj/project.xcworkspace/xcuserdata/
 
-# Windows（flutter wrapper 由工具生成）
-windows/flutter/
+# Windows（只忽略构建缓存；flutter/CMakeLists.txt 等需入库，否则 CI 缺文件）
+windows/flutter/ephemeral/
 
 # 数据文件同步前备份（tools/apply_content.py 生成，供回退用，不入库）
 *.bak
