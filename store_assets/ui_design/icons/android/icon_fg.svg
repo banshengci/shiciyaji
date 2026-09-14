@@ -1,0 +1,13 @@
+<svg width="108" height="108" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
+  <!-- Adaptive Icon 前景层（透明背景）：书卷图形 -->
+  <g fill="none" stroke="#F5F0E8" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M54 41 C45 36 32 36 24 41 L24 70 C32 65 45 65 54 70 Z" fill="#F5F0E8" fill-opacity="0.08"/>
+    <path d="M54 41 C63 36 76 36 84 41 L84 70 C76 65 63 65 54 70 Z" fill="#F5F0E8" fill-opacity="0.08"/>
+    <path d="M54 41 L54 70" stroke-opacity="0.9"/>
+    <path d="M30 49 L47 47" stroke-width="1.6" stroke-opacity="0.7"/>
+    <path d="M30 57 L47 55" stroke-width="1.6" stroke-opacity="0.7"/>
+    <path d="M61 47 L78 49" stroke-width="1.6" stroke-opacity="0.7"/>
+    <path d="M61 55 L78 57" stroke-width="1.6" stroke-opacity="0.7"/>
+  </g>
+  <rect x="70" y="74" width="10" height="10" rx="2" fill="#C41A1A"/>
+</svg>

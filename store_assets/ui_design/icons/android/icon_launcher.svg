@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 圆角方形背景：黛蓝 #1A2A3A -->
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="#1A2A3A"/>
+  <!-- 内描边 苍青 细线，增加层次 -->
+  <rect x="22" y="22" width="468" height="468" rx="96" ry="96" fill="none" stroke="#4F6F8F" stroke-opacity="0.35" stroke-width="3"/>
+
+  <!-- 展开古籍 / 书卷图形（宣纸白 #F5F0E8） -->
+  <g fill="none" stroke="#F5F0E8" stroke-width="14" stroke-linejoin="round" stroke-linecap="round">
+    <!-- 左页 -->
+    <path d="M256 196 C208 172 142 172 96 196 L96 332 C142 308 208 308 256 332 Z" fill="#F5F0E8" fill-opacity="0.08"/>
+    <!-- 右页 -->
+    <path d="M256 196 C304 172 370 172 416 196 L416 332 C370 308 304 308 256 332 Z" fill="#F5F0E8" fill-opacity="0.08"/>
+    <!-- 书脊中缝 -->
+    <path d="M256 196 L256 332" stroke-opacity="0.9"/>
+    <!-- 页面横线（左侧两行） -->
+    <path d="M128 232 L224 222" stroke-width="8" stroke-opacity="0.7"/>
+    <path d="M128 270 L224 260" stroke-width="8" stroke-opacity="0.7"/>
+    <!-- 页面横线（右侧两行） -->
+    <path d="M288 222 L384 232" stroke-width="8" stroke-opacity="0.7"/>
+    <path d="M288 260 L384 270" stroke-width="8" stroke-opacity="0.7"/>
+  </g>
+
+  <!-- 朱砂红印章点缀 #C41A1A -->
+  <rect x="332" y="356" width="44" height="44" rx="8" fill="#C41A1A"/>
+  <text x="354" y="388" font-family="'Ma Shan Zheng','Noto Serif SC',serif" font-size="34" fill="#F5F0E8" text-anchor="middle">诗</text>
+</svg>

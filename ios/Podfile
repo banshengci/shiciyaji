@@ -1,0 +1,59 @@
+# 诗词雅集 · iOS CocoaPods 配置
+# 注：Windows 上 `flutter create` 不会生成 Podfile，此为手工补齐的 Flutter 标准模板。
+# 在 macOS 上构建前必须先执行 `flutter pub get`（会重新生成 Flutter/Generated.xcconfig
+# 中的 FLUTTER_ROOT 指向本机 Flutter SDK），否则 pod install 会读不到 FLUTTER_ROOT。
+
+# 部署目标 iOS 13.0：现代 Flutter 插件（share_plus / file_selector / flutter_tts 等）
+# 普遍要求 13.0+，用默认的 12.0 会让 pod install 报
+# "spec ... requires a higher minimum deployment target"。
+platform :ios, '13.0'
+
+# CocoaPods 统计会同步发网络请求，拖慢 Flutter 构建，关闭之。
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, ensure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    # Xcode 15+ / CocoaPods 1.15+ 兼容修复：
+    # DT_TOOLCHAIN_DIR 已被废弃，不替换为 TOOLCHAIN_DIR 会在构建时报
+    # "DT_TOOLCHAIN_DIR cannot be used to evaluate LIBRARY_SEARCH_PATHS"，
+    # GitHub Actions 的 macos-14 runner（Xcode 15/16）必踩此坑。
+    target.build_configurations.each do |config|
+      next unless config.base_configuration_reference
+      xcconfig_path = config.base_configuration_reference.real_path
+      next unless File.exist?(xcconfig_path)
+      xcconfig = File.read(xcconfig_path)
+      xcconfig_mod = xcconfig.gsub(/DT_TOOLCHAIN_DIR/, 'TOOLCHAIN_DIR')
+      File.open(xcconfig_path, 'w') { |file| file << xcconfig_mod }
+    end
+  end
+end

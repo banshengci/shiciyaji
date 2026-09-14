@@ -1,0 +1,61 @@
+name: Build iOS IPA (TrollStore)
+
+# 无需 Apple 开发者账号：产出未签名 IPA，供 TrollStore（巨魔）安装。
+# 触发方式：仓库 Actions 页面 → 选本工作流 → Run workflow
+#
+# 说明：iOS 构建必须在 macOS 上完成（Xcode + CocoaPods），
+# Windows 环境无法产出 IPA，故用 GitHub 提供的 macOS runner 云构建。
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Flutter（锁定与本地一致的版本）
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: 环境自检（便于排错）
+        run: flutter doctor -v
+
+      - name: 拉取依赖
+        run: flutter pub get
+
+      - name: 安装 CocoaPods 依赖
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: 构建 Release（不签名）
+        run: flutter build ios --release --no-codesign
+
+      - name: 打包 IPA
+        run: |
+          cd build/ios/iphoneos
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R Runner.app Payload/
+          # -y 保留符号链接：Flutter.framework 内含软链接，
+          # 用普通 zip 打出来的 IPA 装上会启动闪退。
+          zip -qry "$GITHUB_WORKSPACE/build/ios/shici_yaji.ipa" Payload
+
+      - name: 校验 IPA 内容
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          ls -lh build/ios/shici_yaji.ipa
+          unzip -l build/ios/shici_yaji.ipa | head -12
+
+      - name: 上传 IPA 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: shici-yaji-ios-ipa
+          path: build/ios/shici_yaji.ipa
+          retention-days: 30

@@ -1,0 +1,91 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# 嵌套构建产物（含 android/app/build、各平台 build 目录）
+**/build/
+
+# Gradle / Android
+.gradle/
+android/.gradle/
+local.properties
+*.keystore
+*.jks
+
+# 根目录临时日志/调试产物
+# 注意：必须匹配「所有」根目录 txt/log，不能只写下划线开头——
+# 根目录还堆着 android_build*.txt、build_log.txt、r.txt、v.txt 等（共 58 个）。
+/*.txt
+/*.log
+/*.err
+/_*.txt
+/_*.log
+
+# iOS（CocoaPods 依赖与 Xcode 用户数据不入库；Generated.xcconfig 由 pub get 重新生成）
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+**/ios/Flutter/.last_build_id
+**/ios/Runner.xcworkspace/xcuserdata/
+**/ios/Runner.xcodeproj/xcuserdata/
+**/ios/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Windows（flutter wrapper 由工具生成）
+windows/flutter/
+
+# 数据文件同步前备份（tools/apply_content.py 生成，供回退用，不入库）
+*.bak
+
+# Android 发布签名私钥（本地产物，绝不入库）
+android/key.properties
+android/app/*.jks
+*.keystore
+
+# 设计导出物（Ardot 画布可随时重新导出；单份 PDF/PNG 合计数 MB，不入库）
+design/exports/
+# 应用图标改造前的原图备份（仅用于回退，不入库）
+design/app_icon_backup_*/
+
+# Flutter 工具本机状态（含本机 SDK 绝对路径，不入库）
+.flutter
+.flutter_tool_state

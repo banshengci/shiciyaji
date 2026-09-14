@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>诗词雅集 · 全平台 UI 设计稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700;900&family=Ma+Shan+Zheng&display=swap" rel="stylesheet" />
+<style>
+:root{
+  /* 2.1 品牌色彩体系 */
+  --dai-lan:#1A2A3A;     /* 黛蓝 主色 */
+  --zhu-sha:#C41A1A;     /* 朱砂红 强调 */
+  --xuan-zhi:#F5F0E8;    /* 宣纸白 背景 */
+  --mo-hei:#222222;      /* 墨黑 正文 */
+  --qing-hui:#6B7280;    /* 青灰 次要 */
+  --dan-huang:#FDF6E3;   /* 淡黄 卡片/搜索 */
+  --cang-qing:#4F6F8F;   /* 苍青 */
+  --shi-huang:#D9A534;   /* 石黄 */
+  --song-lv:#5B7A4A;     /* 松绿 */
+
+  /* ===== 语义变量（随主题切换） ===== */
+  --bg:var(--xuan-zhi);
+  --surface:#FFFFFF;
+  --surface-2:var(--dan-huang);
+  --text:var(--mo-hei);
+  --text-2:var(--qing-hui);
+  --primary:var(--dai-lan);
+  --accent:var(--zhu-sha);
+  --border:rgba(26,42,58,.12);
+  --heat-base:#ECE6D8;
+  --shadow:0 3px 10px rgba(26,42,58,.06);
+
+  /* 2.3 圆角 */
+  --r-card:12px; --r-btn:10px; --r-input:10px;
+  /* 2.4 间距 */
+  --pad-x:16px; --pad-card:16px; --gap-list:8px; --gap-block:24px;
+
+  --serif:"Noto Serif SC","Songti SC","STSong",serif;
+  --brush:"Ma Shan Zheng","Noto Serif SC",serif;
+  --nav-h:64px; --status-h:44px;
+}
+
+/* ===================== 暗色模式 ===================== */
+body.dark{
+  --bg:#111A24;
+  --surface:#1B2733;
+  --surface-2:#223240;
+  --text:#F5F0E8;
+  --text-2:#9FB0BF;
+  --primary:#B7C7D6;
+  --accent:#E23B3B;
+  --border:rgba(245,240,232,.12);
+  --heat-base:#233140;
+  --shadow:0 3px 12px rgba(0,0,0,.35);
+  background:#05080c;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  font-family:var(--serif);
+  background:radial-gradient(circle at 30% 20%,#2b3a4d,#10161f 70%);
+  color:var(--text);
+  display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;
+}
+.stage{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap;justify-content:center;}
+
+/* ===== 手机外框 ===== */
+.phone{width:390px;height:844px;background:#0c0c0e;border-radius:46px;padding:12px;
+  box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 0 0 2px #2a2a2e;position:relative;flex:none;}
+.screen-wrap{width:100%;height:100%;background:var(--bg);border-radius:36px;overflow:hidden;
+  position:relative;display:flex;flex-direction:column;transition:background .3s;}
+
+/* ===== 状态栏 ===== */
+.statusbar{height:var(--status-h);flex:none;display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;color:var(--primary);font-size:14px;font-weight:600;background:var(--bg);z-index:30;transition:color .3s,background .3s;}
+.statusbar .icons{display:flex;gap:6px;align-items:center;}
+.statusbar svg{width:16px;height:16px;}
+
+/* ===== 视口 ===== */
+.viewport{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;scroll-behavior:smooth;}
+.viewport::-webkit-scrollbar{width:0;}
+.screen{display:none;min-height:100%;flex-direction:column;}
+.screen.active{display:flex;}
+
+/* ===== 通用页头 ===== */
+.page-head{position:sticky;top:0;z-index:20;background:var(--bg);padding:6px var(--pad-x) 10px;
+  display:flex;align-items:center;justify-content:center;border-bottom:0.5px solid var(--border);transition:background .3s,border-color .3s;}
+.page-head .title{font-size:20px;font-weight:700;color:var(--primary);letter-spacing:2px;}
+.page-head .left,.page-head .right{position:absolute;display:flex;gap:14px;align-items:center;}
+.page-head .left{left:var(--pad-x);} .page-head .right{right:var(--pad-x);}
+.page-head svg{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-width:1.8;transition:stroke .3s;}
+.icon-btn{background:none;border:none;cursor:pointer;display:flex;padding:4px;color:var(--primary);}
+.icon-btn svg{width:22px;height:22px;}
+.content{padding:var(--pad-x);display:flex;flex-direction:column;gap:var(--gap-block);}
+
+/* ===== 底部导航 ===== */
+.tabbar{height:var(--nav-h);flex:none;display:flex;background:var(--bg);border-top:0.5px solid var(--border);z-index:25;transition:background .3s,border-color .3s;}
+.tabbar.hidden{display:none;}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;
+  color:var(--text-2);background:none;border:none;font-family:var(--serif);}
+.tab svg{width:24px;height:24px;fill:var(--text-2);stroke:var(--text-2);stroke-width:1.6;}
+.tab span{font-size:11px;}
+.tab.active{color:var(--accent);} .tab.active svg{fill:var(--accent);stroke:var(--accent);}
+
+/* ===== 首页 ===== */
+.hero{text-align:center;padding:10px 0 4px;}
+.hero h1{font-size:30px;font-weight:900;color:var(--primary);letter-spacing:8px;}
+.hero .sub{font-size:13px;color:var(--text-2);letter-spacing:3px;margin-top:4px;}
+
+.daily-card{background:var(--surface-2);border-radius:var(--r-card);padding:18px;position:relative;box-shadow:var(--shadow);transition:background .3s;}
+.daily-card .tag{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:1px;}
+.daily-card .pname{font-size:22px;font-weight:700;color:var(--primary);margin:8px 0 2px;}
+.daily-card .pmeta{font-size:13px;color:var(--text-2);}
+.daily-card .pverse{margin:12px 0 16px;font-size:15px;color:var(--text);line-height:1.9;opacity:.85;}
+.btn-primary{background:var(--accent);color:#fff;border:none;border-radius:var(--r-btn);padding:10px 18px;
+  font-size:14px;font-weight:600;font-family:var(--serif);cursor:pointer;box-shadow:0 4px 12px rgba(196,26,26,.30);align-self:flex-end;}
+
+.stats-row{display:flex;gap:var(--gap-list);}
+.stat-box{flex:1;background:var(--surface);border-radius:var(--r-card);padding:14px 8px;text-align:center;
+  box-shadow:var(--shadow);border:1px solid var(--border);transition:background .3s,border-color .3s;}
+.stat-box .num{font-size:24px;font-weight:700;color:var(--primary);line-height:1;}
+.stat-box .lbl{font-size:12px;color:var(--text-2);margin-top:6px;}
+
+.quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap-list);}
+.quick{background:var(--surface-2);border-radius:var(--r-card);padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background .3s;}
+.quick .qicon{width:42px;height:42px;border-radius:50%;background:var(--dai-lan);display:flex;align-items:center;justify-content:center;flex:none;}
+.quick .qicon svg{width:22px;height:22px;fill:#fff;stroke:#fff;stroke-width:1.6;}
+.quick .qtxt{font-size:15px;font-weight:600;color:var(--primary);}
+
+.section-title{font-size:16px;font-weight:700;color:var(--primary);margin-bottom:-8px;}
+
+/* ===== 诗词库 ===== */
+.lib-head-row{display:flex;align-items:center;justify-content:center;position:relative;}
+.lib-head-row .right{position:absolute;right:var(--pad-x);display:flex;gap:16px;}
+.lib-head-row .title{font-size:20px;font-weight:700;color:var(--primary);letter-spacing:2px;}
+.filter-bar{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;}
+.filter-bar::-webkit-scrollbar{height:0;}
+.chip{flex:none;padding:6px 16px;border-radius:999px;font-size:13px;cursor:pointer;background:var(--surface-2);color:var(--primary);border:1px solid transparent;white-space:nowrap;transition:background .3s,color .3s;}
+.chip.active{background:var(--primary);color:var(--bg);}
+.poem-list{display:flex;flex-direction:column;gap:var(--gap-list);}
+.poem-item{background:var(--surface);border-radius:var(--r-card);padding:14px var(--pad-card);cursor:pointer;
+  box-shadow:var(--shadow);border:1px solid var(--border);transition:background .3s,border-color .3s;}
+.poem-item .row1{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.poem-item .pname{font-size:16px;font-weight:700;color:var(--text);}
+.poem-item .pmeta{font-size:13px;color:var(--text-2);margin-top:3px;}
+.genre-tag{flex:none;font-size:11px;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--primary);}
+.poem-item .pline{font-size:13px;color:var(--text-2);margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.poem-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap-list);}
+.poem-grid .poem-card{background:var(--surface-2);border-radius:var(--r-card);padding:18px 10px;text-align:center;cursor:pointer;transition:background .3s;}
+.poem-grid .pname{font-size:16px;font-weight:700;color:var(--primary);}
+.poem-grid .pmeta{font-size:12px;color:var(--text-2);margin-top:6px;}
+.hide{display:none!important;}
+
+/* ===== 详情页 ===== */
+.detail-body{text-align:center;padding:18px var(--pad-x) 100px;display:flex;flex-direction:column;gap:10px;}
+.detail-body .d-title{font-size:26px;font-weight:900;color:var(--primary);letter-spacing:3px;}
+.detail-body .d-meta{font-size:14px;color:var(--text-2);}
+.detail-body .d-verse{font-size:17px;line-height:2.2;color:var(--text);margin-top:10px;}
+.detail-body .d-verse p{margin:2px 0;}
+.detail-actions{position:sticky;bottom:0;height:60px;background:var(--bg);border-top:0.5px solid var(--border);
+  display:flex;justify-content:space-around;align-items:center;z-index:20;transition:background .3s,border-color .3s;}
+.act{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;background:none;border:none;color:var(--text-2);font-family:var(--serif);}
+.act svg{width:24px;height:24px;fill:var(--text-2);stroke:var(--text-2);stroke-width:1.6;}
+.act span{font-size:11px;}
+.act.learned{color:var(--accent);} .act.learned svg{fill:var(--accent);stroke:var(--accent);}
+.act.faved{color:var(--accent);} .act.faved svg{fill:var(--accent);stroke:var(--accent);}
+@keyframes heartbeat{0%{transform:scale(1)}30%{transform:scale(1.35)}60%{transform:scale(.9)}100%{transform:scale(1)}}
+.heart-pop{animation:heartbeat .45s ease;}
+.expand-block{background:var(--surface);border-radius:var(--r-card);padding:14px;margin-top:6px;text-align:left;
+  box-shadow:var(--shadow);border:1px solid var(--border);transition:background .3s,border-color .3s;}
+.expand-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+.expand-head h4{font-size:15px;color:var(--primary);font-weight:700;}
+.expand-head .chev{transition:transform .25s;color:var(--text-2);}
+.expand-block.open .chev{transform:rotate(180deg);}
+.expand-body{font-size:14px;line-height:1.9;color:var(--text);max-height:0;overflow:hidden;transition:max-height .3s,margin .3s;}
+.expand-block.open .expand-body{max-height:600px;margin-top:10px;}
+
+/* ===== 搜索页 ===== */
+.search-box{display:flex;align-items:center;gap:10px;background:var(--surface-2);border-radius:var(--r-input);padding:11px 14px;transition:background .3s;}
+.search-box svg{width:18px;height:18px;stroke:var(--text-2);fill:none;stroke-width:1.8;}
+.search-box input{flex:1;border:none;background:none;outline:none;font-family:var(--serif);font-size:15px;color:var(--text);}
+.empty-state{text-align:center;color:var(--text-2);padding:80px 20px;}
+.empty-state svg{width:64px;height:64px;stroke:var(--text-2);fill:none;stroke-width:1.4;opacity:.5;margin-bottom:14px;}
+.empty-state p{font-size:14px;}
+mark{background:transparent;color:var(--accent);font-weight:700;}
+
+/* ===== 收藏页 ===== */
+.mine-head-row{display:flex;align-items:center;justify-content:space-between;}
+.manage-btn{background:none;border:1px solid var(--primary);color:var(--primary);border-radius:var(--r-btn);padding:6px 14px;font-size:13px;font-family:var(--serif);cursor:pointer;transition:border-color .3s,color .3s;}
+.fav-group{background:var(--surface);border-radius:var(--r-card);padding:14px var(--pad-card);display:flex;justify-content:space-between;align-items:center;box-shadow:var(--shadow);border:1px solid var(--border);cursor:pointer;transition:background .3s,border-color .3s;}
+.fav-group .gname{font-size:16px;font-weight:700;color:var(--text);}
+.fav-group .gcount{font-size:13px;color:var(--text-2);}
+
+/* ===== 设置开关 ===== */
+.setting-card{background:var(--surface);border-radius:var(--r-card);padding:4px var(--pad-card);box-shadow:var(--shadow);border:1px solid var(--border);transition:background .3s,border-color .3s;}
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;}
+.set-label{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--text);}
+.set-label svg{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-width:1.7;}
+.switch{position:relative;width:46px;height:26px;flex:none;}
+.switch input{opacity:0;width:0;height:0;}
+.slider{position:absolute;inset:0;background:var(--text-2);border-radius:999px;transition:.25s;cursor:pointer;}
+.slider:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.25s;}
+.switch input:checked + .slider{background:var(--accent);}
+.switch input:checked + .slider:before{transform:translateX(20px);}
+
+/* ===== 我的页 ===== */
+.profile{display:flex;align-items:center;gap:16px;background:var(--surface-2);border-radius:var(--r-card);padding:18px;transition:background .3s;}
+.avatar{width:64px;height:64px;border-radius:50%;background:var(--dai-lan);display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 4px 12px rgba(26,42,58,.25);}
+.avatar svg{width:38px;height:38px;fill:#fff;}
+.profile .pname{font-size:20px;font-weight:700;color:var(--primary);}
+.profile .pdays{font-size:13px;color:var(--text-2);margin-top:4px;}
+.menu-list{background:var(--surface);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border);transition:background .3s,border-color .3s;}
+.menu-item{display:flex;align-items:center;gap:14px;padding:15px var(--pad-card);cursor:pointer;border-bottom:0.5px solid var(--border);transition:border-color .3s;}
+.menu-item:last-child{border-bottom:none;}
+.menu-item .micon{width:22px;height:22px;stroke:var(--primary);fill:none;stroke-width:1.7;transition:stroke .3s;}
+.menu-item .mtxt{font-size:15px;color:var(--text);flex:1;}
+.menu-item .mchev{width:18px;height:18px;stroke:var(--text-2);fill:none;stroke-width:1.8;}
+
+/* ===== 学习统计 ===== */
+.heatmap{display:grid;grid-template-columns:repeat(18,1fr);gap:3px;margin-top:6px;}
+.heat{aspect-ratio:1;border-radius:2px;background:var(--heat-base);transition:background .3s;}
+.heat.l1{background:#E7B7A8;} .heat.l2{background:#D98C77;} .heat.l3{background:#C75A45;} .heat.l4{background:var(--accent);}
+.chart-card{background:var(--surface);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow);transition:background .3s;}
+.chart-card h4{font-size:15px;color:var(--primary);font-weight:700;margin-bottom:12px;}
+.pie-wrap{display:flex;align-items:center;gap:18px;}
+.pie{width:120px;height:120px;border-radius:50%;flex:none;background:conic-gradient(var(--dai-lan) 0 40%,var(--cang-qing) 40% 65%,var(--shi-huang) 65% 82%,var(--song-lv) 82% 100%);}
+.legend{display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text);}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle;}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:13px;}
+.bar-row .bname{width:48px;color:var(--text-2);flex:none;text-align:right;}
+.bar-track{flex:1;background:var(--heat-base);border-radius:6px;height:14px;overflow:hidden;transition:background .3s;}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--cang-qing),var(--dai-lan));border-radius:6px;}
+.bar-row .bval{width:26px;color:var(--text);flex:none;}
+
+/* ===== 成就墙 ===== */
+.ach-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap-list);}
+.ach-card{background:var(--surface);border-radius:var(--r-card);padding:16px 8px;text-align:center;box-shadow:var(--shadow);transition:background .3s;}
+.ach-card .abadge{width:46px;height:46px;margin:0 auto 8px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.ach-card.locked{opacity:.55;}
+.ach-card .abadge svg{width:26px;height:26px;}
+.ach-card .aname{font-size:12px;color:var(--text);line-height:1.4;}
+.ach-card.locked .aname{color:var(--text-2);}
+
+/* ===== Splash ===== */
+.splash{position:absolute;inset:0;background:var(--bg);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .6s,background .3s;}
+.splash.hide{opacity:0;pointer-events:none;}
+.splash .s-icon{width:110px;height:110px;animation:floaty 2.6s ease-in-out infinite;}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.splash .s-title{font-size:34px;font-weight:900;color:var(--primary);letter-spacing:10px;}
+.splash .s-sub{font-size:13px;color:var(--text-2);letter-spacing:2px;}
+
+/* ===== Toast ===== */
+.toast{position:absolute;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:rgba(26,42,58,.92);color:#fff;
+  padding:10px 20px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:all .3s;z-index:200;white-space:nowrap;}
+body.dark .toast{background:rgba(245,240,232,.94);color:#111A24;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* 侧边说明 */
+.legend-panel{width:280px;background:#fff;border-radius:16px;padding:20px;color:#222;flex:none;box-shadow:0 20px 50px rgba(0,0,0,.4);font-size:13px;align-self:flex-start;}
+.legend-panel h3{font-size:16px;color:var(--dai-lan);margin-bottom:10px;}
+.legend-panel .sw{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;}
+.legend-panel .sw i{width:16px;height:16px;border-radius:4px;flex:none;}
+.legend-panel p{margin:8px 0;line-height:1.7;color:#444;}
+.legend-panel .kbd{background:#eee;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:11px;}
+.legend-panel ol{margin-left:18px;line-height:1.8;}
+.legend-panel .theme-tip{margin-top:10px;padding:8px 10px;background:#F5F0E8;border-radius:8px;font-size:12px;color:#1A2A3A;}
+body.dark .legend-panel{background:#1B2733;color:#E8EDF2;}
+body.dark .legend-panel h3{color:#B7C7D6;}
+body.dark .legend-panel p{color:#C7D2DC;}
+body.dark .legend-panel .theme-tip{background:#223240;color:#B7C7D6;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5.5C10.5 4.5 8 4 5.5 4.3v14C8 18 10.5 18.5 12 19.5c1.5-1 4-1.5 6.5-1.2v-14C16 4 13.5 4.5 12 5.5Z"/><path d="M12 5.5V19.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.6-9.2-9C1.3 8 2.8 4.8 6 4.8c2 0 3.2 1.2 4 2.4.8-1.2 2-2.4 4-2.4 3.2 0 4.7 3.2 3.2 6.2C19 15.4 12 20 12 20Z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1.4"/><circle cx="4" cy="12" r="1.4"/><circle cx="4" cy="18" r="1.4"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5Z"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="m8 11 8-4M8 13l8 4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7V5Z"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4Z"/><path d="M14 6l3 3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-11"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v16l-3-2-3 2-3-2-3 2V4Z"/><path d="M9 9h6M9 13h6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3M9 14h6M10 18h4M12 14v4"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6 .7-4.4 4.1 1.2 6L12 16.8 6.6 19.4l1.2-6L3.4 9.3l6-.7L12 3Z"/></symbol>
+  <symbol id="i-medal" viewBox="0 0 24 24"><circle cx="12" cy="9" r="5"/><path d="M9 13l-2 8 5-3 5 3-2-8"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3c1 3-2 4-2 7a2 2 0 0 0 4 0c2 2 3 4 3 6a5 5 0 0 1-10 0c0-4 4-6 5-13Z"/></symbol>
+  <symbol id="i-book2" viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 0-3 3V4Z"/><path d="M5 4v16"/></symbol>
+  <symbol id="i-seed" viewBox="0 0 24 24"><path d="M12 21V11"/><path d="M12 11C12 7 9 5 5 5c0 4 3 6 7 6Z"/><path d="M12 13c0-3 2-5 6-5 0 3-3 5-6 5Z"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 8l3 8h10l3-8-5 4-4-6-4 6-5-4Z"/></symbol>
+  <symbol id="i-quill" viewBox="0 0 24 24"><path d="M4 20c8 0 14-4 16-12-6 1-12 3-14 9-1 1-2 2-2 3Z"/><path d="M4 20c2-4 5-7 9-9"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14a8 8 0 1 1-9-11 6 6 0 0 0 9 11Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+</defs>
+</svg>
+
+<div class="stage">
+  <div class="phone">
+    <div class="screen-wrap">
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="icons">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h2v-7H3v7Zm4 0h2V9H7v9Zm4 0h2V5h-2v13Zm4 0h2v-9h-2v9Zm4 0h2V3h-2v15Z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 16.5a13 13 0 0 1 20 0M5 13.5a8 8 0 0 1 14 0M8 10.5a4 4 0 0 1 8 0"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="18" height="10" rx="2"/><rect x="4" y="9" width="13" height="6" rx="1" fill="currentColor"/></svg>
+        </span>
+      </div>
+
+      <div class="viewport" id="viewport">
+        <div class="splash" id="splash">
+          <img class="s-icon" src="assets/icon_launcher.svg" alt="icon" />
+          <div class="s-title">诗词雅集</div>
+          <div class="s-sub">品读千年文脉，传承诗词之美</div>
+        </div>
+
+        <!-- 首页 -->
+        <section class="screen active" id="home">
+          <div class="content">
+            <div class="hero"><h1>诗词雅集</h1><div class="sub">离线古诗词 · 学习与欣赏</div></div>
+            <div class="daily-card">
+              <div class="tag">每日一诗 · 8月24日</div>
+              <div class="pname" id="daily-name">相思</div>
+              <div class="pmeta" id="daily-meta">唐 · 王维</div>
+              <div class="pverse" id="daily-verse">红豆生南国，春来发几枝。<br/>愿君多采撷，此物最相思。</div>
+              <button class="btn-primary" onclick="openPoem(2)">开始学习 →</button>
+            </div>
+            <div class="stats-row">
+              <div class="stat-box"><div class="num">42</div><div class="lbl">已学 首</div></div>
+              <div class="stat-box"><div class="num">15</div><div class="lbl">收藏 首</div></div>
+              <div class="stat-box"><div class="num">28</div><div class="lbl">连续 天</div></div>
+            </div>
+            <div class="section-title">快捷入口</div>
+            <div class="quick-grid">
+              <div class="quick" onclick="toast('打开学习计划')"><div class="qicon"><svg><use href="#i-cal"/></svg></div><div class="qtxt">学习计划</div></div>
+              <div class="quick" onclick="toast('打开今日复习')"><div class="qicon"><svg><use href="#i-clock"/></svg></div><div class="qtxt">今日复习</div></div>
+              <div class="quick" onclick="toast('打开阅读历史')"><div class="qicon"><svg><use href="#i-history"/></svg></div><div class="qtxt">阅读历史</div></div>
+              <div class="quick" onclick="toast('打开学习笔记')"><div class="qicon"><svg><use href="#i-note"/></svg></div><div class="qtxt">学习笔记</div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 诗词库 -->
+        <section class="screen" id="library">
+          <div class="page-head lib-head-row">
+            <div class="title">诗词库</div>
+            <div class="right">
+              <button class="icon-btn" id="toggle-view" onclick="toggleView()"><svg id="view-icon"><use href="#i-grid"/></svg></button>
+              <button class="icon-btn" onclick="toast('筛选')"><svg><use href="#i-filter"/></svg></button>
+            </div>
+          </div>
+          <div class="content" style="gap:14px;">
+            <div class="filter-bar" id="filter-bar"></div>
+            <div id="library-body"></div>
+          </div>
+        </section>
+
+        <!-- 搜索 -->
+        <section class="screen" id="search">
+          <div class="page-head lib-head-row"><div class="title">搜索</div></div>
+          <div class="content" style="gap:14px;">
+            <div class="search-box">
+              <svg><use href="#i-search"/></svg>
+              <input id="search-input" placeholder="搜索诗词名、作者、内容..." oninput="doSearch()" />
+            </div>
+            <div id="search-body">
+              <div class="empty-state">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <p>输入关键词搜索诗词</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 收藏 -->
+        <section class="screen" id="collection">
+          <div class="page-head mine-head-row">
+            <div class="title">收藏</div>
+            <button class="manage-btn" onclick="toast('管理收藏夹')">管理</button>
+          </div>
+          <div class="content">
+            <div class="fav-group" onclick="toast('打开「默认收藏夹」')"><div><div class="gname">默认收藏夹</div><div class="gcount">15 首</div></div><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+            <div class="fav-group" onclick="toast('打开「山水田园」')"><div><div class="gname">山水田园</div><div class="gcount">6 首</div></div><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+            <div class="fav-group" onclick="toast('打开「边塞军旅」')"><div><div class="gname">边塞军旅</div><div class="gcount">4 首</div></div><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+            <div class="fav-group" onclick="toast('打开「咏史怀古」')"><div><div class="gname">咏史怀古</div><div class="gcount">3 首</div></div><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+          </div>
+        </section>
+
+        <!-- 我的 -->
+        <section class="screen" id="mine">
+          <div class="page-head lib-head-row"><div class="title">我的</div></div>
+          <div class="content">
+            <div class="profile">
+              <div class="avatar"><svg><use href="#i-user"/></svg></div>
+              <div><div class="pname">墨客一枚</div><div class="pdays">已学习 28 天 · 累计 42 首</div></div>
+            </div>
+            <div class="setting-card">
+              <div class="set-row">
+                <div class="set-label"><svg><use href="#i-moon"/></svg>暗色模式</div>
+                <label class="switch"><input type="checkbox" id="theme-toggle" onchange="toggleTheme()" /><span class="slider"></span></label>
+              </div>
+            </div>
+            <div class="menu-list">
+              <div class="menu-item" onclick="showScreen('stats')"><svg class="micon"><use href="#i-history"/></svg><span class="mtxt">学习记录</span><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+              <div class="menu-item" onclick="toast('我的笔记')"><svg class="micon"><use href="#i-note"/></svg><span class="mtxt">我的笔记</span><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+              <div class="menu-item" onclick="showScreen('stats')"><svg class="micon"><use href="#i-chart"/></svg><span class="mtxt">学习统计</span><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+              <div class="menu-item" onclick="showScreen('achievements')"><svg class="micon"><use href="#i-trophy"/></svg><span class="mtxt">成就墙</span><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+              <div class="menu-item" onclick="toast('设置')"><svg class="micon"><use href="#i-gear"/></svg><span class="mtxt">设置</span><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+              <div class="menu-item" onclick="toast('关于')"><svg class="micon"><use href="#i-info"/></svg><span class="mtxt">关于</span><svg class="mchev"><use href="#i-chev-r"/></svg></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 详情 -->
+        <section class="screen" id="detail">
+          <div class="page-head">
+            <div class="left"><button class="icon-btn" onclick="back()"><svg><use href="#i-back"/></svg></button></div>
+            <div class="title" id="d-title-top">诗词详情</div>
+            <div class="right">
+              <button class="icon-btn" id="d-fav" onclick="toggleFav()"><svg><use href="#i-heart"/></svg></button>
+              <button class="icon-btn" onclick="toast('更多')"><svg><use href="#i-more"/></svg></button>
+            </div>
+          </div>
+          <div class="detail-body" id="detail-body"></div>
+          <div class="detail-actions">
+            <button class="act" id="d-learn" onclick="toggleLearn()"><svg><use href="#i-book2"/></svg><span>学习</span></button>
+            <button class="act" onclick="toast('写笔记')"><svg><use href="#i-pencil"/></svg><span>笔记</span></button>
+            <button class="act" onclick="toast('分享')"><svg><use href="#i-share"/></svg><span>分享</span></button>
+            <button class="act" onclick="toast('朗读中…')"><svg><use href="#i-play"/></svg><span>朗读</span></button>
+          </div>
+        </section>
+
+        <!-- 学习统计 -->
+        <section class="screen" id="stats">
+          <div class="page-head">
+            <div class="left"><button class="icon-btn" onclick="back()"><svg><use href="#i-back"/></svg></button></div>
+            <div class="title">学习统计</div>
+          </div>
+          <div class="content">
+            <div class="stat-box" style="padding:18px;"><div style="font-size:15px;color:var(--text-2);margin-bottom:8px;">近半年学习打卡</div><div class="heatmap" id="heatmap"></div>
+              <div style="display:flex;justify-content:flex-end;gap:4px;align-items:center;font-size:11px;color:var(--text-2);margin-top:8px;">少 <span class="heat" style="width:12px;height:12px;"></span><span class="heat l1" style="width:12px;height:12px;"></span><span class="heat l2" style="width:12px;height:12px;"></span><span class="heat l3" style="width:12px;height:12px;"></span><span class="heat l4" style="width:12px;height:12px;"></span> 多</div>
+            </div>
+            <div class="stats-row">
+              <div class="stat-box"><div class="num">42</div><div class="lbl">总学习</div></div>
+              <div class="stat-box"><div class="num">31</div><div class="lbl">已掌握</div></div>
+              <div class="stat-box"><div class="num">5</div><div class="lbl">待复习</div></div>
+              <div class="stat-box"><div class="num">28</div><div class="lbl">连续天</div></div>
+            </div>
+            <div class="chart-card">
+              <h4>朝代分布</h4>
+              <div class="pie-wrap"><div class="pie"></div><div class="legend">
+                <div><i style="background:var(--dai-lan)"></i>唐 · 28 首</div>
+                <div><i style="background:var(--cang-qing)"></i>宋 · 18 首</div>
+                <div><i style="background:var(--shi-huang)"></i>魏晋 · 10 首</div>
+                <div><i style="background:var(--song-lv)"></i>其他 · 14 首</div>
+              </div></div>
+            </div>
+            <div class="chart-card">
+              <h4>作者分布 · 前 10</h4>
+              <div id="author-bars"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 成就墙 -->
+        <section class="screen" id="achievements">
+          <div class="page-head">
+            <div class="left"><button class="icon-btn" onclick="back()"><svg><use href="#i-back"/></svg></button></div>
+            <div class="title">成就墙</div>
+          </div>
+          <div class="content"><div class="ach-grid" id="ach-grid"></div></div>
+        </section>
+      </div>
+
+      <div class="toast" id="toast"></div>
+
+      <nav class="tabbar" id="tabbar">
+        <button class="tab active" data-screen="home"><svg><use href="#i-home"/></svg><span>首页</span></button>
+        <button class="tab" data-screen="library"><svg><use href="#i-book"/></svg><span>诗词库</span></button>
+        <button class="tab" data-screen="search"><svg><use href="#i-search"/></svg><span>搜索</span></button>
+        <button class="tab" data-screen="collection"><svg><use href="#i-heart"/></svg><span>收藏</span></button>
+        <button class="tab" data-screen="mine"><svg><use href="#i-user"/></svg><span>我的</span></button>
+      </nav>
+    </div>
+  </div>
+
+  <div class="legend-panel">
+    <h3>诗词雅集 · 设计稿说明</h3>
+    <p>新中式（Neo-Chinese）风格，按 <b>全平台UI设计需求.md</b> 实现的可交互高保真原型。</p>
+    <div class="sw"><i style="background:#1A2A3A"></i>黛蓝 #1A2A3A 主色</div>
+    <div class="sw"><i style="background:#C41A1A"></i>朱砂红 #C41A1A 强调</div>
+    <div class="sw"><i style="background:#F5F0E8"></i>宣纸白 #F5F0E8 背景</div>
+    <div class="sw"><i style="background:#FDF6E3"></i>淡黄 #FDF6E3 卡片</div>
+    <div class="sw"><i style="background:#6B7280"></i>青灰 #6B7280 次要</div>
+    <p style="margin-top:10px"><b>可交互：</b></p>
+    <ol>
+      <li>点击底部 5 个标签切换页面</li>
+      <li>诗词库：列表/网格切换、朝代筛选</li>
+      <li>点击任意诗词 → 详情页</li>
+      <li>详情：收藏（心跳）、学习（变朱砂）</li>
+      <li>搜索：实时高亮关键词</li>
+      <li>我的 → 学习统计 / 成就墙</li>
+      <li>我的 → 暗色模式开关（持久化）</li>
+    </ol>
+    <div class="theme-tip">暗色模式：点击「我的」页「暗色模式」开关，或跟随系统偏好，刷新后保持。</div>
+    <p style="margin-top:8px;color:#888;">字体：Noto Serif SC（衬线）。图标均为内联 SVG。</p>
+  </div>
+</div>
+
+<script>
+/* ===== 主题初始化（避免闪烁，早于渲染） ===== */
+(function(){
+  try{
+    var saved=localStorage.getItem('shici_theme');
+    var sysDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if(saved==='dark'||(!saved&&sysDark)) document.body.classList.add('dark');
+  }catch(e){}
+})();
+
+const poems=[
+ {id:1,title:"静夜思",dynasty:"唐",author:"李白",genre:"唐诗",first:"床前明月光，疑是地上霜。",
+  lines:["床前明月光，","疑是地上霜。","举头望明月，","低头思故乡。"],
+  note:"疑：好像。举头：抬头。",translation:"明亮的月光洒在床前，好像地上泛起的一层霜。抬头望着天上的明月，低头思念远方的家乡。",
+  appreciation:"以极平易的语言写极深挚的乡愁，二十四字浑然天成，是千古思乡绝唱。",background:"作于李白青年时期漫游各地时，见月怀乡之作。"},
+ {id:2,title:"相思",dynasty:"唐",author:"王维",genre:"唐诗",first:"红豆生南国，春来发几枝。",
+  lines:["红豆生南国，","春来发几枝。","愿君多采撷，","此物最相思。"],
+  note:"红豆：又名相思子，产于南方。采撷：采摘。",translation:"红豆生长在南方，春天来了又长出多少新枝。希望你多多采摘它，因为它最能寄托相思之情。",
+  appreciation:"借物寄情，语语不离红豆，句句皆是相思，含蓄而深情。",background:"又名《江上赠李龟年》，为怀念友人所作。"},
+ {id:3,title:"春晓",dynasty:"唐",author:"孟浩然",genre:"唐诗",first:"春眠不觉晓，处处闻啼鸟。",
+  lines:["春眠不觉晓，","处处闻啼鸟。","夜来风雨声，","花落知多少。"],
+  note:"晓：天刚亮。闻：听见。",translation:"春日里酣睡不知不觉天已破晓，醒来处处是鸟儿的啼鸣。回想昨夜的风声雨声，不知吹落了多少春花。",
+  appreciation:"从听觉落笔写春晨，由喜春转入惜春，淡而有味。",background:"孟浩然隐居鹿门山时所作，写闲适中的春感。"},
+ {id:4,title:"登鹳雀楼",dynasty:"唐",author:"王之涣",genre:"唐诗",first:"白日依山尽，黄河入海流。",
+  lines:["白日依山尽，","黄河入海流。","欲穷千里目，","更上一层楼。"],
+  note:"穷：尽。千里目：远望的视力。",translation:"夕阳依傍着山峦渐渐沉落，黄河奔腾向大海流去。若想把千里的风光看尽，那就要再登上更高的一层楼。",
+  appreciation:"景、理、情交融，末二句蕴含进取哲理，广为传诵。",background:"登山西永济鹳雀楼即目抒怀之作。"},
+ {id:5,title:"水调歌头",dynasty:"宋",author:"苏轼",genre:"宋词",first:"明月几时有？把酒问青天。",
+  lines:["明月几时有？","把酒问青天。","不知天上宫阙，","今夕是何年。……"],
+  note:"阙：宫门前供瞭望的楼。把酒：端起酒杯。",translation:"明月从什么时候开始有的呢？我举起酒杯询问青天。不知道天上的宫殿，今晚又是何年。……",
+  appreciation:"中秋望月怀人之作，旷达中见深情，'但愿人长久'成千古绝唱。",background:"丙辰中秋，欢饮达旦，大醉，作此篇兼怀子由。"},
+ {id:6,title:"如梦令",dynasty:"宋",author:"李清照",genre:"宋词",first:"昨夜雨疏风骤，浓睡不消残酒。",
+  lines:["昨夜雨疏风骤，","浓睡不消残酒。","试问卷帘人，","却道海棠依旧。"],
+  note:"雨疏风骤：雨小风急。卷帘人：侍女。",translation:"昨夜雨点稀疏风声急骤，沉沉一觉也消不去残存的酒意。问那卷帘的侍女，她却说海棠花依旧如故。",
+  appreciation:"惜花惜春，用语浅近而情致婉转，尽显易安词风。",background:"李清照早年之作，写闺中惜春情怀。"},
+ {id:7,title:"观沧海",dynasty:"魏晋",author:"曹操",genre:"古风",first:"东临碣石，以观沧海。",
+  lines:["东临碣石，","以观沧海。","水何澹澹，","山岛竦峙。……"],
+  note:"碣石：山名。澹澹：水波荡漾。竦峙：高耸。",translation:"向东登上碣石山，来观赏苍茫的大海。海水多么浩荡，山岛高高耸立。……",
+  appreciation:"借沧海之景抒包吞天地之志，建安风骨的代表。",background:"建安十二年北征乌桓途中登碣石所作。"},
+ {id:8,title:"将进酒",dynasty:"唐",author:"李白",genre:"唐诗",first:"君不见黄河之水天上来，",
+  lines:["君不见黄河之水天上来，","奔流到海不复回。","君不见高堂明镜悲白发，","朝如青丝暮成雪。……"],
+  note:"将：请。高堂：高大的厅堂，指父母。",translation:"你可见黄河之水从天上奔涌而来，滚滚东流入海再不回还。你可见高堂明镜中悲叹白发，晨如青丝暮成白雪。……",
+  appreciation:"豪情与悲慨交织，纵酒高歌中见傲岸不羁的李白本色。",background:"李白被排挤出长安后，与友人岑勋、元丹丘宴饮之作。"}
+];
+const dynasties=["全部","唐","宋","魏晋","其他"];
+let curFilter="全部", curView="list", curPoem=null;
+
+function poemItemHTML(p){
+  return `<div class="poem-item" onclick="openPoem(${p.id})">
+    <div class="row1"><div class="pname">${p.title}</div><div class="genre-tag">${p.genre}</div></div>
+    <div class="pmeta">${p.dynasty} · ${p.author}</div>
+    <div class="pline">${p.first}</div></div>`;
+}
+function poemCardHTML(p){
+  return `<div class="poem-card" onclick="openPoem(${p.id})">
+    <div class="pname">${p.title}</div><div class="pmeta">${p.dynasty} · ${p.author}</div></div>`;
+}
+function renderLibrary(){
+  const bar=document.getElementById('filter-bar');
+  bar.innerHTML=dynasties.map(d=>`<div class="chip ${d===curFilter?'active':''}" onclick="setFilter('${d}')">${d}</div>`).join('');
+  const list=poems.filter(p=>curFilter==="全部"||p.dynasty===curFilter);
+  const body=document.getElementById('library-body');
+  body.innerHTML = curView==="list"
+    ? `<div class="poem-list">${list.map(poemItemHTML).join('')}</div>`
+    : `<div class="poem-grid">${list.map(poemCardHTML).join('')}</div>`;
+}
+function setFilter(d){curFilter=d;renderLibrary();}
+function toggleView(){
+  curView = curView==="list" ? "grid":"list";
+  document.getElementById('view-icon').innerHTML=`<use href="#${curView==='list'?'i-grid':'i-list'}"/>`;
+  renderLibrary();
+}
+function openPoem(id){
+  curPoem=poems.find(p=>p.id===id);
+  document.getElementById('d-title-top').textContent=curPoem.title;
+  const blocks=[{t:"注释",c:curPoem.note},{t:"译文",c:curPoem.translation},{t:"赏析",c:curPoem.appreciation},{t:"背景",c:curPoem.background}];
+  document.getElementById('detail-body').innerHTML=`
+    <div class="d-title">${curPoem.title}</div>
+    <div class="d-meta">${curPoem.dynasty} · ${curPoem.author}</div>
+    <div class="d-verse">${curPoem.lines.map(l=>`<p>${l}</p>`).join('')}</div>
+    ${blocks.map((b,i)=>`
+      <div class="expand-block ${i===0?'open':''}">
+        <div class="expand-head" onclick="this.parentElement.classList.toggle('open')">
+          <h4>${b.t}</h4><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="expand-body">${b.c}</div>
+      </div>`).join('')}`;
+  showScreen('detail',true);
+}
+function toggleFav(){
+  const b=document.getElementById('d-fav');
+  b.classList.toggle('faved');
+  if(b.classList.contains('faved')){b.querySelector('svg').classList.add('heart-pop');toast('已添加到收藏');}
+  else toast('已取消收藏');
+  setTimeout(()=>b.querySelector('svg').classList.remove('heart-pop'),500);
+}
+function toggleLearn(){
+  const b=document.getElementById('d-learn');
+  const on=!b.classList.contains('learned');
+  b.classList.toggle('learned',on);
+  b.querySelector('span').textContent=on?'已学习':'学习';
+  b.querySelector('use').setAttribute('href',on?'#i-check':'#i-book2');
+  toast(on?'学习完成 +1':'已取消学习');
+}
+function doSearch(){
+  const q=document.getElementById('search-input').value.trim();
+  const body=document.getElementById('search-body');
+  if(!q){body.innerHTML=`<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><p>输入关键词搜索诗词</p></div>`;return;}
+  const list=poems.filter(p=>(p.title+p.author+p.dynasty+p.first+p.lines.join('')).includes(q));
+  if(!list.length){body.innerHTML=`<div class="empty-state"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><p>未找到「${q}」相关诗词</p></div>`;return;}
+  const hl=t=>t.split(q).join(`<mark>${q}</mark>`);
+  body.innerHTML=`<div class="poem-list">${list.map(p=>`
+    <div class="poem-item" onclick="openPoem(${p.id})">
+      <div class="row1"><div class="pname">${hl(p.title)}</div><div class="genre-tag">${p.genre}</div></div>
+      <div class="pmeta">${hl(p.dynasty)} · ${hl(p.author)}</div>
+      <div class="pline">${hl(p.first)}</div></div>`).join('')}</div>`;
+}
+function renderStats(){
+  const hm=document.getElementById('heatmap');
+  let cells='';
+  for(let i=0;i<18*7;i++){const lvl=Math.floor(Math.random()*6);cells+=`<div class="heat ${lvl>1?'l'+(lvl-1):''}"></div>`;}
+  hm.innerHTML=cells;
+  const authors=[["李白",2],["王维",1],["孟浩然",1],["王之涣",1],["苏轼",1],["李清照",1],["曹操",1],["杜甫",3],["白居易",2],["辛弃疾",2]];
+  const max=authors[7][1];
+  document.getElementById('author-bars').innerHTML=authors.map(([n,v])=>`
+    <div class="bar-row"><span class="bname">${n}</span><div class="bar-track"><div class="bar-fill" style="width:${v/max*100}%"></div></div><span class="bval">${v}</span></div>`).join('');
+}
+const achievements=[
+  {n:"初露锋芒",i:"i-seed",on:true},{n:"学富五车",i:"i-book2",on:true},{n:"连续七日",i:"i-flame",on:true},
+  {n:"诗海拾贝",i:"i-star",on:true},{n:"满腹珠玑",i:"i-quill",on:true},{n:"温故知新",i:"i-clock",on:true},
+  {n:"登科及第",i:"i-medal",on:false},{n:"博古通今",i:"i-eye",on:false},{n:"学贯古今",i:"i-crown",on:false}
+];
+function renderAch(){
+  document.getElementById('ach-grid').innerHTML=achievements.map(a=>`
+    <div class="ach-card ${a.on?'':'locked'}">
+      <div class="abadge" style="background:${a.on?'var(--surface-2)':'var(--heat-base)'}">
+        <svg style="${a.on?'':'opacity:.4'}"><use href="#${a.i}"/></svg></div>
+      <div class="aname">${a.on?a.n:'???'}</div></div>`).join('');
+}
+
+/* ===== 导航 ===== */
+const subScreens=['detail','stats','achievements'];
+function showScreen(id,hideNav){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const hide = hideNav || subScreens.includes(id);
+  document.getElementById('tabbar').classList.toggle('hidden',hide);
+  if(!hide){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===id));}
+  document.getElementById('viewport').scrollTop=0;
+}
+function back(){showScreen(lastTab);}
+let lastTab='home';
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{lastTab=t.dataset.screen;showScreen(t.dataset.screen);}));
+
+let toastTimer;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),1600);
+}
+
+/* ===== 主题切换 ===== */
+function toggleTheme(){
+  document.body.classList.toggle('dark');
+  try{localStorage.setItem('shici_theme',document.body.classList.contains('dark')?'dark':'light');}catch(e){}
+  const t=document.getElementById('theme-toggle');
+  if(t)t.checked=document.body.classList.contains('dark');
+}
+
+/* ===== 初始化 ===== */
+(function(){
+  const t=document.getElementById('theme-toggle');
+  if(t)t.checked=document.body.classList.contains('dark');
+})();
+renderLibrary();renderStats();renderAch();
+setTimeout(()=>document.getElementById('splash').classList.add('hide'),1500);
+</script>
+</body>
+</html>

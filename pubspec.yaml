@@ -1,0 +1,75 @@
+name: shici_yaji
+description: "诗词雅集 - 离线古诗词学习与欣赏应用"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  sqflite_common_ffi: ^2.3.3
+  sqflite: ^2.3.4
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  shared_preferences: ^2.3.2
+  flutter_tts: ^4.2.2
+  shadcn_ui: ^0.16.3
+  pinyin: ^3.3.0
+  file_selector: ^1.0.3
+  share_plus: ^7.2.2
+  flutter_svg: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  msix: ^3.16.7
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/data/poems.json
+    - assets/data/t2s_mapping.json
+    - assets/data/s2t_mapping.json
+    - assets/data/packs/tangshi.json
+    - assets/data/packs/songci.json
+    - assets/data/packs/xiaoxue.json
+    - assets/icons/
+
+  # 品牌字体（对应设计稿 字体 变量集）
+  # Ma Shan Zheng → 书法标题（MaShanZheng）
+  # Inter         → 数字与拉丁字母（Inter）；中文仍走系统 serif（Noto Serif CJK）
+  fonts:
+    - family: MaShanZheng
+      fonts:
+        - asset: assets/fonts/MaShanZheng-Regular.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Variable.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-Variable.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Variable.ttf
+          weight: 700
+
+msix_config:
+  display_name: 诗词雅集
+  publisher_display_name: 诗词雅集
+  identity_name: cn.shiciyaji.shici_yaji
+  publisher: CN=cn.shiciyaji
+  msix_version: 1.0.0.0
+  logo_path: windows/runner/resources/app_icon.ico
+  start_menu_icon_path: windows/runner/resources/app_icon.ico
+  tile_icon_path: windows/runner/resources/app_icon.ico
+  icons_background_color: transparent
+  capabilities: internetClient
+  arch: x64
+  certificate_path: ''
+  certificate_password: ''
+  pub_models_path: ''
+  vir_certificate: ''

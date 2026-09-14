@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 备份文件位于 getApplicationSupportDirectory()/backups，
+         对应 Context.getFilesDir()/backups，供 share_plus 通过 FileProvider 分享 -->
+    <files-path name="backups" path="backups" />
+    <!-- 诗词卡片图片生成在 getTemporaryDirectory()，
+         对应 Context.getCacheDir()，供 share_plus 分享临时图片 -->
+    <cache-path name="cache" path="." />
+</paths>

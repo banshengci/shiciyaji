@@ -1,0 +1,7 @@
+# 测试目录的静态分析配置
+# 测试/性能/调试脚本中常使用 print 输出诊断信息，故在此关闭 avoid_print。
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    avoid_print: false
