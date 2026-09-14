@@ -20,18 +20,20 @@ class _PackStorePageState extends State<PackStorePage> {
   final List<_PackMeta> _packs = const [
     _PackMeta(
       name: 'tangshi',
-      title: '唐诗名篇',
-      subtitle: '74 首 · 补充预置之外的诗圣诗仙经典',
-      description: '在预置诗词之外精选 74 首唐诗名篇：将进酒、蜀道难、茅屋为秋风所破歌、琵琶行、长恨歌……每首均含白话译文、艺术赏析与创作背景，离线可读。',
+      title: '唐诗扩充',
+      subtitle: '600 首 · 预置之外的全唐诗名篇',
+      description:
+          '在预置诗词之外扩充 600 首唐诗：李白、杜甫、白居易、王维等大家代表作。名篇含白话译文、赏析与创作背景，其余诗文完整可读，安装后离线可用。',
       assetPath: 'assets/data/packs/tangshi.json',
       icon: PoemIcons.dynasty,
       color: Color(0xFFC41A1A),
     ),
     _PackMeta(
       name: 'songci',
-      title: '宋词名篇',
-      subtitle: '51 首 · 豪放婉约大家代表作',
-      description: '苏轼、辛弃疾、李清照、柳永、陆游等大家的经典词作 51 首：江城子、水龙吟、声声慢……每首均含白话译文、艺术赏析与创作背景，离线可读。',
+      title: '宋词扩充',
+      subtitle: '500 首 · 豪放婉约大家词作',
+      description:
+          '在预置诗词之外扩充 500 首宋词：苏轼、辛弃疾、李清照、陆游、欧阳修等大家作品。名篇含白话译文、赏析与创作背景，其余词作完整可读。',
       assetPath: 'assets/data/packs/songci.json',
       icon: PoemIcons.edit,
       color: Color(0xFF1A6B5C),
@@ -39,8 +41,9 @@ class _PackStorePageState extends State<PackStorePage> {
     _PackMeta(
       name: 'xiaoxue',
       title: '小学补充',
-      subtitle: '19 首 · 教材常见而预置未收录',
-      description: '部编教材常考但预置未收录的古诗 19 首：别董大、枫桥夜泊、题临安邸、凉州词（王翰）……每首均含白话译文、艺术赏析与创作背景。',
+      subtitle: '150 首 · 教材常见而预置未收录',
+      description:
+          '部编教材常见而预置未收录的古诗 150 首：别董大、枫桥夜泊、题临安邸等。名篇含白话译文、赏析与创作背景，适合小学阶段拓展阅读。',
       assetPath: 'assets/data/packs/xiaoxue.json',
       icon: PoemIcons.goal,
       color: Color(0xFFB8860B),

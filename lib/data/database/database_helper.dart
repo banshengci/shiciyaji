@@ -16,7 +16,7 @@ import '../../utils/pinyin_helper.dart';
 /// 负责：建表、初始数据加载、DAO 查询
 class DatabaseHelper {
   static const _dbName = 'poetry.db';
-  static const _dbVersion = 7;
+  static const _dbVersion = 8;
 
   static Database? _db;
   static bool _initialized = false;
@@ -339,6 +339,12 @@ class DatabaseHelper {
     if (oldVersion < 7) {
       await _upgradeV7RebuildContent(db, assetReader: assetReader);
     }
+    // v7→v8: 离线包扩充（74/51/19 → 约 600/500/150）。
+    // 已安装的包按 id 区间清空后用新版 assets/data/packs/*.json 重装；
+    // 用户收藏/笔记若指向被替换的旧 id，会在删包时一并清理（与卸载逻辑一致）。
+    if (oldVersion < 8) {
+      await _upgradeV8RefreshPacks(db, assetReader: assetReader);
+    }
   }
 
   /// 仅供测试：模拟从 [oldVersion] 直接升级到当前版本。
@@ -415,6 +421,75 @@ class DatabaseHelper {
         .values
         .first as int?;
     debugPrint('✅ v7 完成：诗词共 $pc 首');
+  }
+
+  /// v8 迁移：已安装的离线包升级为扩充版（约 600/500/150 首）。
+  ///
+  /// 只处理 installed_packs 中已存在的包：按 id 区间删旧诗再 import 新包。
+  /// 未安装的包不动，用户仍可在离线包商店手动安装。
+  static Future<void> _upgradeV8RefreshPacks(Database db,
+      {Future<String> Function(String path)? assetReader}) async {
+    debugPrint('🔄 v8 离线包扩充刷新...');
+    assetReader ??= _defaultAssetReader();
+    final installedRows =
+        await db.query('installed_packs', columns: ['pack_name']);
+    if (installedRows.isEmpty) {
+      debugPrint('✅ v8 完成：无已装离线包，跳过');
+      return;
+    }
+
+    const ranges = <String, (int, int)>{
+      'xiaoxue': (10000, 12000),
+      'tangshi': (20000, 22000),
+      'songci': (30000, 32000),
+    };
+
+    for (final row in installedRows) {
+      final packName = row['pack_name'] as String;
+      final range = ranges[packName];
+      if (range == null) {
+        debugPrint('⚠️ v8 未知离线包 $packName，跳过');
+        continue;
+      }
+      final (idStart, idEnd) = range;
+      try {
+        await db.transaction((txn) async {
+          await txn.delete('poem_categories',
+              where: 'poem_id >= ? AND poem_id < ?',
+              whereArgs: [idStart, idEnd]);
+          await txn.delete('favorites',
+              where: 'poem_id >= ? AND poem_id < ?',
+              whereArgs: [idStart, idEnd]);
+          await txn.delete('study_records',
+              where: 'poem_id >= ? AND poem_id < ?',
+              whereArgs: [idStart, idEnd]);
+          await txn.delete('study_notes',
+              where: 'poem_id >= ? AND poem_id < ?',
+              whereArgs: [idStart, idEnd]);
+          await txn.delete('reading_history',
+              where: 'poem_id >= ? AND poem_id < ?',
+              whereArgs: [idStart, idEnd]);
+          await txn.delete('poems',
+              where: 'id >= ? AND id < ?',
+              whereArgs: [idStart, idEnd]);
+          await txn.delete('installed_packs',
+              where: 'pack_name = ?', whereArgs: [packName]);
+        });
+        final jsonString =
+            await assetReader('assets/data/packs/$packName.json');
+        final inserted = await _importPackWithDb(db, jsonString);
+        debugPrint('✅ v8 重装 $packName：新插入 $inserted 首');
+      } catch (e) {
+        debugPrint('⚠️ v8 重装离线包 $packName 失败: $e');
+      }
+    }
+
+    invalidatePinyinIndex();
+    final pc = (await db.rawQuery('SELECT COUNT(*) FROM poems'))
+        .first
+        .values
+        .first as int?;
+    debugPrint('✅ v8 完成：诗词共 $pc 首');
   }
 
   /// 将数据库中所有繁体字转为简体字
@@ -911,7 +986,7 @@ class DatabaseHelper {
   ///
   /// 从全量诗词中排除 title/content 包含 [char] 的，随机取 [count] 首。
   static Future<List<Poem>> getRandomPoemsExcludingChar(String char,
-      {int count = 20}) async {
+      {int count = 40}) async {
     final db = await database();
     final rows = await db.rawQuery('''
       SELECT p.*, a.name AS author_name, d.name AS dynasty_name
@@ -929,6 +1004,7 @@ class DatabaseHelper {
   ///
   /// 飞花令选字用：排除标点/数字/英文字母，只取内容中的汉字，
   /// 统计每个字出现的诗数，再按频次加权随机抽一个。
+  /// 不看标题，避免仅因篇名出现而极少真正入句的字。
   static Future<String?> getRandomPlayChar({int minCount = 3}) async {
     final poems = await getAllPoems(limit: 2000);
     if (poems.isEmpty) return null;
@@ -945,10 +1021,24 @@ class DatabaseHelper {
       }
     }
     // 过滤：至少出现在 minCount 首诗中，且不是太常见的字（如「的」「了」）
+    // 上限放宽到 80%，避免扩充包后可选令字过少
     final candidates = charToPoemCount.entries
-        .where((e) => e.value >= minCount && e.value <= poems.length * 0.6)
+        .where((e) => e.value >= minCount && e.value <= poems.length * 0.8)
         .toList();
-    if (candidates.isEmpty) return null;
+    if (candidates.isEmpty) {
+      // 退回更宽松的下限
+      final loose = charToPoemCount.entries
+          .where((e) => e.value >= 2 && e.value <= poems.length * 0.8)
+          .toList();
+      if (loose.isEmpty) return null;
+      final w = loose.fold<int>(0, (s, e) => s + e.value);
+      var r = DateTime.now().millisecondsSinceEpoch % w;
+      for (final e in loose) {
+        r -= e.value;
+        if (r < 0) return e.key;
+      }
+      return loose.last.key;
+    }
     // 按频次加权随机
     final totalWeight = candidates.fold<int>(0, (s, e) => s + e.value);
     var r = DateTime.now().millisecondsSinceEpoch % totalWeight;
@@ -1668,20 +1758,20 @@ class DatabaseHelper {
     final db = await database();
     int deletedPoems = 0;
     await db.transaction((txn) async {
-      // 根据 id 范围判定哪些诗属于此包
+      // 根据 id 范围判定哪些诗属于此包（每包预留 2000 个 id）
       int? idStart, idEnd;
       switch (packName) {
         case 'tangshi':
           idStart = 20000;
-          idEnd = 21000;
+          idEnd = 22000;
           break;
         case 'songci':
           idStart = 30000;
-          idEnd = 31000;
+          idEnd = 32000;
           break;
         case 'xiaoxue':
           idStart = 10000;
-          idEnd = 11000;
+          idEnd = 12000;
           break;
       }
       if (idStart == null) return;
@@ -1729,6 +1819,19 @@ class DatabaseHelper {
     final description = data['description'] as String? ?? '';
     final source = data['source'] as String? ?? '';
     final poems = (data['poems'] as List).cast<Map<String, dynamic>>();
+    // 包内可选作者元数据（真实简介/生卒），导入时优先于占位模板
+    final packAuthors = <String, Map<String, dynamic>>{};
+    final packAuthorList = data['authors'];
+    if (packAuthorList is List) {
+      for (final raw in packAuthorList) {
+        if (raw is! Map) continue;
+        final m = Map<String, dynamic>.from(raw);
+        final name = (m['name'] as String?)?.trim();
+        if (name != null && name.isNotEmpty) {
+          packAuthors[name] = m;
+        }
+      }
+    }
 
     // 作者缓存：本包内遇到的新作者分配 id
     final authorCache = <String, int>{}; // name -> author_id
@@ -1749,20 +1852,20 @@ class DatabaseHelper {
       nextAuthorId = maxId + 1;
     }
 
-    // 推断该包对应的 id 区间（用于统计新插入行数）
+    // 推断该包对应的 id 区间（用于统计新插入行数；每包预留 2000 个 id）
     int idStart, idEnd;
     switch (packName) {
       case 'tangshi':
         idStart = 20000;
-        idEnd = 21000;
+        idEnd = 22000;
         break;
       case 'songci':
         idStart = 30000;
-        idEnd = 31000;
+        idEnd = 32000;
         break;
       case 'xiaoxue':
         idStart = 10000;
-        idEnd = 11000;
+        idEnd = 12000;
         break;
       default:
         idStart = 0;
@@ -1777,21 +1880,32 @@ class DatabaseHelper {
 
     await db.transaction((txn) async {
       try {
-        // 先插入所有作者
+        // 先插入所有作者（优先使用包内真实简介）
         for (final p in poems) {
           final authorName = (p['author'] as String?)?.trim() ?? '佚名';
           if (!authorCache.containsKey(authorName)) {
             final authorId = nextAuthorId++;
             authorCache[authorName] = authorId;
+            final meta = packAuthors[authorName];
+            final bioRaw = (meta?['bio'] as String?)?.trim() ?? '';
+            final birth = meta?['birth_year'];
+            final death = meta?['death_year'];
+            final dynId =
+                (meta?['dynasty_id'] as int?) ?? (p['dynasty_id'] as int?);
+            final bio = bioRaw.isNotEmpty
+                ? bioRaw
+                : '$authorName，${dynastyName[dynId] ?? '古代'}代'
+                    '${(p['type'] as String?)?.contains('词') == true ? '词人' : '诗人'}。'
+                    '其作品题材广泛、艺术精湛，在中国古代文学史上具有重要地位。';
             await txn.insert(
               'authors',
               {
                 'id': authorId,
                 'name': authorName,
-                'dynasty_id': p['dynasty_id'],
-                'bio':
-                    '$authorName，${dynastyName[p['dynasty_id']] ?? '古代'}代${(p['type'] as String?)?.contains('词') == true ? '词人' : '诗人'}。'
-                        '其作品题材广泛、艺术精湛，在中国古代文学史上具有重要地位。',
+                'dynasty_id': dynId,
+                'bio': bio,
+                if (birth != null) 'birth_year': birth,
+                if (death != null) 'death_year': death,
               },
               conflictAlgorithm: ConflictAlgorithm.ignore,
             );

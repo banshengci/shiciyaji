@@ -1,24 +1,12 @@
 # -*- coding: utf-8 -*-
-"""重建三个离线包为「内容齐全的名篇精选」。
+"""（已由 expand_offline_packs.py 取代）重建三个离线包为「内容齐全的名篇精选」。
 
-背景
-----
-assets/data/packs/{tangshi,songci,xiaoxue}.json（App 真正加载的离线包源）是
-chinese-poetry 全唐诗/全宋词的原样截取：繁体、无译文/赏析/背景，甚至 songci
-全部缺 title。用户装上后自然「什么都没有」。
+说明：本脚本只从 pack_*.json 精选库取材，规模较小（约 74/51/19）。
+当前默认请使用：
 
-而 assets/data/pack_{tangshi,songci,xiaoxue}.json 是已 100% 完善（译文/赏析/
-背景全有）的名篇精选（与 poems_v2 同源、简体、author_id/dynasty_id/category_ids
-均与预置 poems.json 共享同一 id 体系、跨文件无 poem id 冲突）。
+    python tools/expand_offline_packs.py
 
-本脚本以 pack_*.json 为素材重建 packs/*.json：
-  1. 剔除与预置 poems.json（id 1-70）title+作者 重合的诗词 —— 防止导入后
-     DB 出现两首同名诗（预置 DB 已有该诗，重复无意义）。
-  2. id 重映射到 importPack/uninstallPack 约定区间（xiaoxue 10001+、tangshi
-     20001+、songci 30001+），与 Dart 侧 switch 完全兼容，无需改 Dart。
-  3. poem 转 importPack 期望结构：author 为「名字」字段（非 author_id），
-     补全 translation/appreciation/background。
-  4. 原文件备份至 build/packs_backup/，不覆盖旧档以便回退。
+该脚本会从 chinese-poetry 源数据扩充到约 600/500/150 首，并保留精选译文赏析。
 """
 import json
 import os

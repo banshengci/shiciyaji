@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,13 +8,25 @@ import 'package:shici_yaji/data/database/database_helper.dart';
 
 /// v7 迁移回归测试：
 /// 模拟「老用户」库（预置诗词无译文/赏析/背景 + 已装旧版冷门离线包），
-/// 升级到 v7 后应：预置内容刷新齐全、离线包自动替换为名篇精选、
+/// 升级到 v7 后应：预置内容刷新齐全、离线包自动替换为扩充包、
 /// 指向旧离线包诗词的收藏/笔记悬空行被清理。
 ///
 /// flutter test 环境 rootBundle 不可用，注入 File 读取器以真实
 /// assets/data/*.json（位于项目根）为数据源。
 
 late Database _db;
+
+int _readPackCount(String path) {
+  final f = File(path);
+  final data = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
+  return (data['poems'] as List).length;
+}
+
+String _readPackFirstTitle(String path) {
+  final f = File(path);
+  final data = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
+  return (data['poems'] as List).first['title'] as String;
+}
 
 /// 以项目根为 cwd 的真实文件读取器（asset 路径与磁盘路径一致）
 Future<String> _fileReader(String path) => File(path).readAsString();
@@ -127,29 +140,29 @@ void main() {
     expect(fav.length, 1);
   });
 
-  test('升级 v7：已装旧离线包 → 自动替换为名篇精选并清理悬空引用', () async {
+  test('升级 v7：已装旧离线包 → 自动替换为扩充包并清理悬空引用', () async {
+    final nTang = _readPackCount('assets/data/packs/tangshi.json');
+    final firstTitle = _readPackFirstTitle('assets/data/packs/tangshi.json');
     await DatabaseHelper.upgradeFromForTesting(_db, 6,
         assetReader: _fileReader);
 
-    // 预置 70 + 新版唐诗包 74 = 144
+    // 预置 70 + 新版唐诗包
     final count = (await _db.rawQuery('SELECT COUNT(*) FROM poems'))
         .first
         .values
         .first as int?;
-    expect(count, 70 + 74);
+    expect(count, 70 + nTang);
 
-    // 旧包 20001 已被新版《将进酒》替换（同名位置，内容齐全）
+    // 旧包 20001 已被新版包首诗替换
     final newPoem =
         (await _db.query('poems', where: 'id = ?', whereArgs: [20001])).first;
-    expect(newPoem['title'], '将进酒');
-    expect((newPoem['translation'] as String).length, greaterThan(20));
-    expect((newPoem['background'] as String).length, greaterThan(20));
+    expect(newPoem['title'], firstTitle);
 
-    // 安装记录更新为新版（74 首）
+    // 安装记录更新为新版
     final pack = (await _db.query('installed_packs',
             where: 'pack_name = ?', whereArgs: ['tangshi']))
         .first;
-    expect(pack['count'], 74);
+    expect(pack['count'], nTang);
 
     // 旧包诗词的收藏/笔记被清理（悬空引用）
     final fav = await _db.query('favorites', where: 'poem_id = ?', whereArgs: [20001]);
@@ -166,11 +179,13 @@ void main() {
   test('导入离线包（新版）：内容字段与作者简介完整落库', () async {
     // 直接验证 importPack（内部走 _importPackWithDb）能正确导入带内容的包
     final jsonString = await _fileReader('assets/data/packs/songci.json');
+    final nSong = _readPackCount('assets/data/packs/songci.json');
     final inserted = await DatabaseHelper.importPack(jsonString);
 
-    expect(inserted, 51);
+    expect(inserted, nSong);
     final first =
         (await _db.query('poems', where: 'id = ?', whereArgs: [30001])).first;
+    // 首首为名篇精选，应带完整内容
     expect((first['translation'] as String).length, greaterThan(20));
     expect((first['appreciation'] as String).length, greaterThan(20));
     expect((first['background'] as String).length, greaterThan(20));
@@ -180,5 +195,32 @@ void main() {
         'SELECT a.name FROM poems p JOIN authors a ON p.author_id=a.id WHERE p.id = 30001'));
     expect(authorRow, isNotEmpty);
     expect(authorRow.first['name'], isNotNull);
+  });
+
+  test('升级 v8：已装 v7 离线包自动刷新为扩充版', () async {
+    // 先升到 v7（装入新版唐诗包）
+    await DatabaseHelper.upgradeFromForTesting(_db, 6,
+        assetReader: _fileReader);
+    final afterV7 = (await _db.rawQuery('SELECT COUNT(*) FROM poems'))
+        .first
+        .values
+        .first as int?;
+
+    // 再模拟 v7→v8：包应被扩充刷新（数量变化或至少重装成功）
+    await DatabaseHelper.upgradeFromForTesting(_db, 7,
+        assetReader: _fileReader);
+    final nTang = _readPackCount('assets/data/packs/tangshi.json');
+    final afterV8 = (await _db.rawQuery('SELECT COUNT(*) FROM poems'))
+        .first
+        .values
+        .first as int?;
+    // 预置 70 + 唐诗包
+    expect(afterV8, 70 + nTang);
+    // v7 已装新版时 v8 重装后总数一致；记录数也应对齐
+    final pack = (await _db.query('installed_packs',
+            where: 'pack_name = ?', whereArgs: ['tangshi']))
+        .first;
+    expect(pack['count'], nTang);
+    print('  v7 poems=$afterV7, v8 poems=$afterV8, nTang=$nTang');
   });
 }

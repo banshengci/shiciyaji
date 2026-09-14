@@ -49,6 +49,9 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
   int? _selectedIdx;
   bool _answered = false;
 
+  /// 单局最多答几题，避免扩充包后一局跑完数百首
+  static const int _maxRounds = 12;
+
   bool _traditional = false;
 
   String _t(String s) => _traditional
@@ -99,6 +102,72 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
     });
   }
 
+  int get _totalRounds =>
+      min(_maxRounds, _allCharPoems.length);
+
+  /// 返回 [poem] 中首次出现令字的那一行（或标题），供选项预览与对错解析
+  String? _matchingSnippet(Poem poem) {
+    final char = _playChar;
+    for (final raw in poem.content.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      if (line.contains(char)) return line;
+    }
+    if (poem.title.contains(char)) {
+      return '《${poem.title}》';
+    }
+    return null;
+  }
+
+  /// 将令字高亮（答题后展示命中句用）。
+  /// [text] 可能已转繁体，因此同时匹配简/繁令字。
+  Widget _highlightLine(String text, ThemeData theme, {bool revealed = false}) {
+    final chars = <String>{_playChar, _t(_playChar)};
+    final spans = <TextSpan>[];
+    var i = 0;
+    while (i < text.length) {
+      String? hit;
+      for (final c in chars) {
+        if (c.isEmpty) continue;
+        if (text.startsWith(c, i)) {
+          hit = c;
+          break;
+        }
+      }
+      if (hit != null) {
+        spans.add(TextSpan(
+          text: hit,
+          style: TextStyle(
+            color: revealed ? AppTheme.zhuShaHong : theme.colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
+        ));
+        i += hit.length;
+      } else {
+        // 收集连续非命中字符
+        var j = i + 1;
+        while (j < text.length) {
+          var isHit = false;
+          for (final c in chars) {
+            if (c.isNotEmpty && text.startsWith(c, j)) {
+              isHit = true;
+              break;
+            }
+          }
+          if (isHit) break;
+          j++;
+        }
+        spans.add(TextSpan(text: text.substring(i, j)));
+        i = j;
+      }
+    }
+    return Text.rich(
+      TextSpan(children: spans, style: theme.textTheme.bodySmall),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   // ---- 开始游戏 ----
   void _startGame() {
     setState(() {
@@ -117,19 +186,20 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
 
   /// 出题：从包含 playChar 的诗中选一首正确答案，再从不含该字的诗中抽 3 首干扰项
   void _nextRound() {
-    if (_currentIndex >= _allCharPoems.length || _allCharPoems.isEmpty) {
+    if (_currentIndex >= _totalRounds || _allCharPoems.isEmpty) {
       _finishGame();
       return;
     }
     final correct = _allCharPoems[_currentIndex];
     final rng = Random();
-    // 干扰项必须不含目标字，否则用户无法判断
-    final correctIds = _allCharPoems.map((p) => p.id).toSet();
+    // 干扰项必须不含目标字（title/content 都不含），否则用户无法判断
+    final correctId = correct.id;
     final distractors = _distractorPool
-        .where((p) => !correctIds.contains(p.id))
+        .where((p) => p.id != correctId)
         .toList()
       ..shuffle(rng);
-    final opts = [correct, ...distractors.take(3)]..shuffle(rng);
+    final picked = distractors.take(3).toList();
+    final opts = [correct, ...picked]..shuffle(rng);
     setState(() {
       _options = opts;
       _selectedIdx = null;
@@ -265,7 +335,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
               ),
             ),
             const SizedBox(height: 12),
-            Text('共 ${_allCharPoems.length} 首包含「${_t(_playChar)}」的诗',
+            Text('共 ${_allCharPoems.length} 首包含「${_t(_playChar)}」的诗，本局答 $_totalRounds 题',
                 style: theme.textTheme.bodySmall),
             const SizedBox(height: 24),
             ElevatedButton(
@@ -307,7 +377,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
           ),
         // 题目区
         Expanded(
-          child: _currentIndex >= _allCharPoems.length
+          child: _currentIndex >= _totalRounds
               ? const Center(child: CircularProgressIndicator())
               : _buildQuestion(theme),
         ),
@@ -316,7 +386,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
   }
 
   Widget _buildScoreBar(ThemeData theme) {
-    final total = _allCharPoems.length;
+    final total = _totalRounds;
     final progress = total > 0 ? (_currentIndex + 1) / total : 0.0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -398,6 +468,18 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
                     borderColor = Colors.red;
                   }
                 }
+                // 答题前：节选前两行（考验是否记得全文）
+                // 答题后：正确项展示「含令字的原句」并高亮，避免只凭标题猜
+                String preview;
+                if (!_answered) {
+                  final raw = opt.content.replaceAll('\n', ' ');
+                  preview = raw.length > 60 ? '${raw.substring(0, 60)}…' : raw;
+                } else if (isCorrectOpt) {
+                  preview = _matchingSnippet(opt) ?? opt.content;
+                } else {
+                  final raw = opt.content.replaceAll('\n', ' ');
+                  preview = raw.length > 60 ? '${raw.substring(0, 60)}…' : raw;
+                }
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Material(
@@ -430,14 +512,15 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              _t(opt.content.length > 60
-                                  ? '${opt.content.substring(0, 60)}…'
-                                  : opt.content),
-                              style: theme.textTheme.bodySmall,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            if (_answered && isCorrectOpt)
+                              _highlightLine(_t(preview), theme, revealed: true)
+                            else
+                              Text(
+                                _t(preview),
+                                style: theme.textTheme.bodySmall,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                           ],
                         ),
                       ),
@@ -457,11 +540,24 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                _selectedIdx == null || _selectedIdx == -1
-                    ? '⏱ 时间到！'
-                    : _options[_selectedIdx!].id == correct.id
+                () {
+                  if (_selectedIdx == null || _selectedIdx == -1) {
+                    final snip = _matchingSnippet(correct);
+                    return snip == null
+                        ? '⏱ 时间到！「${_t(_playChar)}」出自《${_t(correct.title)}》'
+                        : '⏱ 时间到！「${_t(_playChar)}」出自《${_t(correct.title)}》：${_t(snip)}';
+                  }
+                  if (_options[_selectedIdx!].id == correct.id) {
+                    final snip = _matchingSnippet(correct);
+                    return snip == null
                         ? '✅ 正确！「${_t(_playChar)}」出自《${_t(correct.title)}》'
-                        : '❌ 「${_t(_playChar)}」出自《${_t(correct.title)}》',
+                        : '✅ 正确！「${_t(_playChar)}」出自《${_t(correct.title)}》：${_t(snip)}';
+                  }
+                  final snip = _matchingSnippet(correct);
+                  return snip == null
+                      ? '❌ 「${_t(_playChar)}」出自《${_t(correct.title)}》'
+                      : '❌ 「${_t(_playChar)}」出自《${_t(correct.title)}》：${_t(snip)}';
+                }(),
                 style: theme.textTheme.bodyMedium,
               ),
             ),
