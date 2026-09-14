@@ -18,11 +18,31 @@ permissions:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    # 固定 windows-2022，不用 windows-latest：
+    # Flutter 3.24.5 的 visual_studio.dart 只把 majorVersion == 17 映射为
+    # "Visual Studio 17 2022"，其余版本（含更新的 VS）一律 fallback 到
+    # "Visual Studio 16 2019"；而该 generator 在 runner 上并不存在，
+    # CMake 会报 "could not find any instance of Visual Studio"。
+    # windows-2022 镜像的 VS 固定在 2022（17.x），正好落在正确分支。
+    runs-on: windows-2022
     timeout-minutes: 60
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+
+      - name: 环境诊断（打印 VS 版本，便于日后排错）
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            & $vswhere -all -prerelease -products * -format json |
+              ConvertFrom-Json |
+              Select-Object displayName, installationVersion |
+              Format-Table -AutoSize
+          } else {
+            Write-Host "vswhere 不存在: $vswhere"
+          }
+          cmake --version
 
       - name: 安装 Flutter（锁定与本地一致的版本）
         uses: subosito/flutter-action@v2
@@ -30,7 +50,7 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: 烧入 Flutter 桌面支持
+      - name: 启用 Flutter 桌面支持
         run: flutter config --enable-windows-desktop
 
       - name: 拉取依赖
