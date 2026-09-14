@@ -77,6 +77,20 @@ jobs:
           cp "$SRC" "out/shici_yaji-android-${GITHUB_REF_NAME}.apk"
           ls -lh out/
 
+      - name: 校验签名（release 模式打印证书指纹，可与本机 APK 对照）
+        run: |
+          if [ "$SIGNING" = "release" ]; then
+            APK=build/app/outputs/flutter-apk/app-release.apk
+            APKSIGNER=$(ls "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | tail -1)
+            "$APKSIGNER" verify --print-certs "$APK" | head -6
+            echo ""
+            echo "本机同名包的证书指纹应为："
+            echo "  SHA-256: 156bb332dcd4c76078ea42c18e073fc2261b3160cc092c024df6abe12f1dadf5"
+            echo "两者一致即说明 Secrets 配置正确。"
+          else
+            echo "debug 签名模式，跳过证书校验（Secrets 未生效，请检查 Secret 名称）"
+          fi
+
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
