@@ -8,6 +8,11 @@ name: Build iOS IPA (TrollStore)
 
 on:
   workflow_dispatch:
+  # 推送 v* 标签自动触发（例如 git tag v1.0.0 && git push origin v1.0.0），
+  # 这样不必进网页手动点 Run workflow。
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build-ios:
@@ -32,7 +37,9 @@ jobs:
       - name: 安装 CocoaPods 依赖
         run: |
           cd ios
-          pod install --repo-update
+          # 不用 --repo-update：runner 每次都是全新环境，没有本地 specs 可更新，
+          # 该参数只会白等一轮 CDN 全量索引（历史上是超时主因）。
+          pod install
 
       - name: 构建 Release（不签名）
         run: flutter build ios --release --no-codesign
