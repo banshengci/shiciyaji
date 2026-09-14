@@ -14,6 +14,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-ios:
     runs-on: macos-14
@@ -66,3 +69,13 @@ jobs:
           name: shici-yaji-ios-ipa
           path: build/ios/shici_yaji.ipa
           retention-days: 30
+
+      - name: 发布到 Release（仅标签触发）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/ios/shici_yaji.ipa
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

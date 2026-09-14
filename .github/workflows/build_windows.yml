@@ -13,6 +13,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -55,3 +58,13 @@ jobs:
           name: shici-yaji-windows
           path: shici_yaji-windows-x64.zip
           retention-days: 30
+
+      - name: 发布到 Release（仅标签触发）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: shici_yaji-windows-x64.zip
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

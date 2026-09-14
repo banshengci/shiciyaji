@@ -1,0 +1,95 @@
+name: Build Android
+
+# Android 也在云端构建，与本机产物行为一致（Flutter 3.24.5 锁定同版本）。
+#
+# 签名：keystore 与密码绝不入库，通过 GitHub Secrets 注入：
+#   ANDROID_KEYSTORE_BASE64   android/app/shici-release.jks 的 base64
+#   ANDROID_STORE_PASSWORD    key.properties 的 storePassword
+#   ANDROID_KEY_PASSWORD      key.properties 的 keyPassword
+# 未配置 Secrets 时自动回退 debug 签名（仍可安装，但与本机 release 签名不同源，
+# 会导致「覆盖安装失败、需先卸载」，故正式发版前建议配齐）。
+#
+# 触发：推送 v* 标签，或在 Actions 页面手动 Run workflow。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 安装 Flutter（锁定与本地一致的版本）
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: 准备签名配置
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PW: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            printf '%s' "$KS_B64" | base64 -d > android/app/shici-release.jks
+            printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=shici\nstoreFile=app/shici-release.jks\n' \
+              "$STORE_PW" "$KEY_PW" > android/key.properties
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+            echo "已注入 release 签名密钥"
+          else
+            echo "SIGNING=debug" >> "$GITHUB_ENV"
+            echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，本次使用 debug 签名"
+          fi
+
+      - name: 拉取依赖
+        run: flutter pub get
+
+      - name: 构建 APK
+        run: |
+          if [ "$SIGNING" = "release" ]; then
+            flutter build apk --release
+          else
+            flutter build apk --debug
+          fi
+
+      - name: 校验产物
+        run: |
+          SRC=$(ls build/app/outputs/flutter-apk/app-*.apk | head -1)
+          echo "产物: $SRC"
+          ls -lh "$SRC"
+          mkdir -p out
+          cp "$SRC" "out/shici_yaji-android-${GITHUB_REF_NAME}.apk"
+          ls -lh out/
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: shici-yaji-android
+          path: out/*.apk
+          retention-days: 30
+
+      - name: 发布到 Release（仅标签触发）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
