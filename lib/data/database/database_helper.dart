@@ -659,6 +659,37 @@ class DatabaseHelper {
     return results.map(Poem.fromMap).toList();
   }
 
+  /// 卡片标签用：poem_id → 分类名列表（按 sort_order，已做繁简归一）
+  ///
+  /// 一次查询把全部关联取回，避免列表里逐首查一遍分类造成的 N+1。
+  static Future<Map<int, List<String>>> getPoemCategoryMap() async {
+    final db = await database();
+    final rows = await db.rawQuery('''
+      SELECT pc.poem_id AS poem_id, c.name AS name
+      FROM poem_categories pc
+      JOIN categories c ON pc.category_id = c.id
+      ORDER BY c.sort_order, c.id
+    ''');
+    final out = <int, List<String>>{};
+    for (final r in rows) {
+      final id = r['poem_id'] as int?;
+      final name = S2TConverter.apply(r['name'] as String? ?? '');
+      if (id == null || name.isEmpty) continue;
+      out.putIfAbsent(id, () => <String>[]).add(name);
+    }
+    return out;
+  }
+
+  /// 卡片收藏态用：一次性取回全部已收藏的诗词 id
+  static Future<Set<int>> getFavoritePoemIds() async {
+    final db = await database();
+    final rows = await db.query('favorites', columns: <String>['poem_id']);
+    return rows
+        .map((r) => r['poem_id'])
+        .whereType<int>()
+        .toSet();
+  }
+
   /// 获取单首诗词详情
   static Future<Poem?> getPoemById(int id) async {
     final db = await database();
@@ -1106,6 +1137,23 @@ class DatabaseHelper {
     final db = await database();
     final results = await db.query('categories', orderBy: 'type, sort_order');
     return results.map(Category.fromMap).toList();
+  }
+
+  /// 库内实际出现过的体裁取值（`poems.type` 去重）。
+  ///
+  /// 筛选选项据此生成，而不是在页面里写死一份列表 —— 写死的那份会随着
+  /// 诗集包更新慢慢变成假选项（点了筛不出任何东西），也会漏掉新体裁。
+  /// 次序由调用方决定，这里只管「有哪些」。
+  static Future<List<String>> getPoemTypes() async {
+    final db = await database();
+    final rows = await db.rawQuery(
+      "SELECT DISTINCT type FROM poems "
+      "WHERE type IS NOT NULL AND TRIM(type) <> '' ORDER BY type",
+    );
+    return rows
+        .map((r) => (r['type'] as String? ?? '').trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
   }
 
   // ============ DAO: 收藏 ============

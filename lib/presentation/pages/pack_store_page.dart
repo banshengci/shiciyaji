@@ -3,7 +3,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../widgets/poem_icon.dart';
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 
 /// 离线包商店：列出可用的诗词包，并提供安装/卸载
@@ -101,6 +101,7 @@ class _PackStorePageState extends State<PackStorePage> {
   }
 
   Future<void> _uninstall(_PackMeta pack) async {
+    final c = ShiciColors.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -112,7 +113,7 @@ class _PackStorePageState extends State<PackStorePage> {
               child: const Text('取消')),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('卸载', style: TextStyle(color: Colors.red))),
+              child: Text('卸载', style: TextStyle(color: c.cinnabar))),
         ],
       ),
     );
@@ -138,6 +139,7 @@ class _PackStorePageState extends State<PackStorePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = ShiciColors.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('离线包管理'),
@@ -159,8 +161,8 @@ class _PackStorePageState extends State<PackStorePage> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      const Icon(Icons.cloud_off_outlined,
-                          color: AppTheme.daiLan, size: 28),
+                      Icon(Icons.cloud_off_outlined,
+                          color: c.indigo, size: 28),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -200,6 +202,7 @@ class _PackStorePageState extends State<PackStorePage> {
   }
 
   Widget _buildPackCard(_PackMeta pack, ThemeData theme) {
+    final c = ShiciColors.of(context);
     final installed = _installed[pack.name] ?? false;
     final busy = _busy[pack.name] ?? false;
     final count = _counts[pack.name] ?? 0;
@@ -237,12 +240,12 @@ class _PackStorePageState extends State<PackStorePage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppTheme.daiLan.withOpacity(0.12),
+                              color: c.indigo.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Text('已安装',
+                            child: Text('已安装',
                                 style: TextStyle(
-                                    color: AppTheme.daiLan,
+                                    color: c.indigo,
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold)),
                           ),
@@ -267,7 +270,7 @@ class _PackStorePageState extends State<PackStorePage> {
                   child: Text(
                     '已添加 $count 首到本地数据库',
                     style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppTheme.daiLan, fontWeight: FontWeight.w500),
+                        color: c.indigo, fontWeight: FontWeight.w500),
                   ),
                 )
               else
@@ -289,11 +292,11 @@ class _PackStorePageState extends State<PackStorePage> {
                       ? null
                       : const PoemIcon(PoemIcons.download, size: 18),
                   child: busy
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2, color: c.onAccent))
                       : const Text('安装'),
                 ),
             ],

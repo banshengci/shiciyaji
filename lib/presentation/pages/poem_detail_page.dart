@@ -12,6 +12,7 @@ import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart' show Poem, Author, StudyNote;
 import '../../utils/pinyin_helper.dart';
 import '../widgets/poem_icon.dart';
+import '../widgets/poem_parallel_card.dart';
 import '../widgets/note_dialogs.dart'
     show runEditFlow, runDeleteFlow, EditOutcome;
 import 'author_detail_page.dart';
@@ -40,6 +41,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   bool _showBackground = false;
   double _fontSize = 18.0;
   bool _immersive = false;
+
+  /// 阅读模式 —— 通读（分节展开） / 对照（05 赏析 · 注释卡）
+  PoemReadingMode _readingMode = PoemReadingModeStore.fallback;
   String _fontFamily = 'serif';
   bool _traditionalChinese = false;
   bool _showPinyin = false;
@@ -82,6 +86,23 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
         _showPinyin = prefs.getBool('show_pinyin') ?? false;
       });
     }
+    // 阅读模式走自己的 store（全局偏好，与篇目无关）
+    final mode = await PoemReadingModeStore.load();
+    if (mounted) setState(() => _readingMode = mode);
+  }
+
+  /// 是否按对照读法渲染。
+  ///
+  /// 沉浸模式优先渲染「只有诗」，所以那里不叠对照卡。
+  bool get _parallel =>
+      _readingMode == PoemReadingMode.parallel && !_immersive;
+
+  Future<void> _pickReadingMode() async {
+    final picked =
+        await showPoemReadingModePicker(context, current: _readingMode);
+    if (picked == null || picked == _readingMode) return;
+    setState(() => _readingMode = picked);
+    await PoemReadingModeStore.save(picked);
   }
 
   Future<void> _loadData() async {
@@ -187,18 +208,29 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
         child: Focus(
           autofocus: true,
           child: Scaffold(
-            backgroundColor: _immersive ? Colors.black : null,
+            backgroundColor: _immersive ? Colors.black : null, // keep: fixed-block
             appBar: _immersive
                 ? null
                 : AppBar(
                     // 画布顶栏不放诗题（诗题在内容区以大字号居中呈现），
                     // 只保留「返回 / 朗读 / 收藏」
                     actions: [
+                      // 阅读模式入口：通读 / 对照，选中对照时图标转为朱砂
+                      IconButton(
+                        onPressed: _pickReadingMode,
+                        icon: PoemIcon(
+                          PoemIcons.parallel,
+                          color: _readingMode == PoemReadingMode.parallel
+                              ? pal.cinnabar
+                              : null,
+                        ),
+                        tooltip: '阅读模式：${_readingMode.label}',
+                      ),
                       IconButton(
                         onPressed: _toggleTts,
                         icon: PoemIcon(
                           PoemIcons.tts,
-                          color: _ttsPlaying ? AppTheme.zhuShaHong : null,
+                          color: _ttsPlaying ? pal.cinnabar : null,
                         ),
                         tooltip: '朗读',
                       ),
@@ -206,7 +238,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                         onPressed: () => _toggleFavorite(),
                         icon: PoemIcon(
                           PoemIcons.bookmark,
-                          color: _isFavorite ? AppTheme.zhuShaHong : null,
+                          color: _isFavorite ? pal.cinnabar : null,
                         ),
                         tooltip: _isFavorite ? '取消收藏' : '收藏',
                       ),
@@ -250,7 +282,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                             fontSize: _fontSize + 10,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 2.0,
-                            color: _immersive ? Colors.white : pal.ink,
+                            color: _immersive ? Colors.white : pal.ink, // keep: fixed-block
                             fontFamily: _fontFamily,
                             height: 1.35,
                           ),
@@ -272,117 +304,131 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                             : _authorLine(poem),
                       ),
                       const SizedBox(height: 18),
-                      // 诗体：居中、行距 2.0。点击进入沉浸阅读
-                      // （画布顶栏没有沉浸入口，用「点正文」承载）
-                      GestureDetector(
-                        onTap: _immersive
-                            ? null
-                            : () => setState(() => _immersive = true),
-                        onLongPress: _immersive ? null : _showPoemActions,
-                        child: Center(
-                          child: _showPinyin
-                              ? _buildPinyinText(_t(poem.content), theme)
-                              : Text(
-                                  _t(poem.content),
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: _fontSize,
-                                    height: 2.0,
-                                    fontFamily: _fontFamily,
-                                    color: _immersive
-                                        ? Colors.white
-                                        : theme.colorScheme.onSurface,
+                      // ── 对照读法（05 赏析 · 注释卡）─────────────────────────────
+                      // 整块换掉「正文 + 注释 / 译文 / 赏析」这套分节：05 卡本身就是
+                      // 「逐联原文 + 译文 + 赏析 + 注释」的一体化排版，两套并存只会重复。
+                      if (_parallel) ...[
+                        GestureDetector(
+                          onLongPress: _showPoemActions,
+                          child: PoemParallelCard(
+                            poem: poem,
+                            transform: _t,
+                            showHeader: false,
+                          ),
+                        ),
+                      ] else ...[
+                        // 诗体：居中、行距 2.0。点击进入沉浸阅读
+                        // （画布顶栏没有沉浸入口，用「点正文」承载）
+                        GestureDetector(
+                          onTap: _immersive
+                              ? null
+                              : () => setState(() => _immersive = true),
+                          onLongPress: _immersive ? null : _showPoemActions,
+                          child: Center(
+                            child: _showPinyin
+                                ? _buildPinyinText(_t(poem.content), theme)
+                                : Text(
+                                    _t(poem.content),
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: _fontSize,
+                                      height: 2.0,
+                                      fontFamily: _fontFamily,
+                                      color: !_immersive
+                                          ? theme.colorScheme.onSurface
+                                          : Colors.white, // keep: fixed-block
+                                    ),
                                   ),
-                                ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 18),
-                      _buildDivider(theme),
-                      const SizedBox(height: 18),
-                      // 注释
-                      if (_showNotes && poem.notes.isNotEmpty) ...[
-                        const SizedBox(height: 24),
-                        _buildCollapsibleSection(
-                          theme,
-                          '注 释',
-                          PoemIcons.note,
-                          _showNotes,
-                          () => setState(() => _showNotes = !_showNotes),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: poem.notes
-                                .map((n) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: RichText(
-                                        text: TextSpan(
-                                          style: TextStyle(
-                                              fontSize: _fontSize - 2,
-                                              height: 1.8,
-                                              color: _immersive
-                                                  ? Colors.white70
-                                                  : theme.colorScheme.onSurface,
-                                              fontFamily: _fontFamily),
-                                          children: [
-                                            TextSpan(
-                                                text: '【${_t(n.word)}】',
-                                                style: TextStyle(
-                                                    color: theme
-                                                        .colorScheme.secondary,
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                            TextSpan(text: _t(n.meaning)),
-                                          ],
+                        const SizedBox(height: 18),
+                        _buildDivider(theme),
+                        const SizedBox(height: 18),
+                        // 注释
+                        if (_showNotes && poem.notes.isNotEmpty) ...[
+                          const SizedBox(height: 24),
+                          _buildCollapsibleSection(
+                            theme,
+                            '注 释',
+                            PoemIcons.note,
+                            _showNotes,
+                            () => setState(() => _showNotes = !_showNotes),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: poem.notes
+                                  .map((n) => Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: RichText(
+                                          text: TextSpan(
+                                            style: TextStyle(
+                                                fontSize: _fontSize - 2,
+                                                height: 1.8,
+                                                color: _immersive
+                                                    ? Colors.white70
+                                                    : theme.colorScheme.onSurface,
+                                                fontFamily: _fontFamily),
+                                            children: [
+                                              TextSpan(
+                                                  text: '【${_t(n.word)}】',
+                                                  style: TextStyle(
+                                                      color: theme
+                                                          .colorScheme.secondary,
+                                                      fontWeight:
+                                                          FontWeight.bold)),
+                                              TextSpan(text: _t(n.meaning)),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ))
-                                .toList(),
+                                      ))
+                                  .toList(),
+                            ),
                           ),
-                        ),
-                      ],
-                      // 译文
-                      if (poem.translation != null) ...[
-                        const SizedBox(height: 24),
-                        _buildCollapsibleSection(
-                          theme,
-                          '译 文',
-                          PoemIcons.recite,
-                          _showTranslation,
-                          () => setState(
-                              () => _showTranslation = !_showTranslation),
-                          Text(
-                            _t(poem.translation!),
-                            style: TextStyle(
-                                fontSize: _fontSize - 2,
-                                height: 1.8,
-                                color: _immersive
-                                    ? Colors.white70
-                                    : theme.colorScheme.onSurface
-                                        .withOpacity(0.85)),
+                        ],
+                        // 译文
+                        if (poem.translation != null) ...[
+                          const SizedBox(height: 24),
+                          _buildCollapsibleSection(
+                            theme,
+                            '译 文',
+                            PoemIcons.recite,
+                            _showTranslation,
+                            () => setState(
+                                () => _showTranslation = !_showTranslation),
+                            Text(
+                              _t(poem.translation!),
+                              style: TextStyle(
+                                  fontSize: _fontSize - 2,
+                                  height: 1.8,
+                                  color: _immersive
+                                      ? Colors.white70
+                                      : theme.colorScheme.onSurface
+                                          .withOpacity(0.85)),
+                            ),
                           ),
-                        ),
-                      ],
-                      // 赏析
-                      if (poem.appreciation != null) ...[
-                        const SizedBox(height: 24),
-                        _buildCollapsibleSection(
-                          theme,
-                          '赏 析',
-                          PoemIcons.star,
-                          _showAppreciation,
-                          () => setState(
-                              () => _showAppreciation = !_showAppreciation),
-                          Text(
-                            _t(poem.appreciation!),
-                            style: TextStyle(
-                                fontSize: _fontSize - 2,
-                                height: 1.8,
-                                color: _immersive
-                                    ? Colors.white70
-                                    : theme.colorScheme.onSurface
-                                        .withOpacity(0.85)),
+                        ],
+                        // 赏析
+                        if (poem.appreciation != null) ...[
+                          const SizedBox(height: 24),
+                          _buildCollapsibleSection(
+                            theme,
+                            '赏 析',
+                            PoemIcons.star,
+                            _showAppreciation,
+                            () => setState(
+                                () => _showAppreciation = !_showAppreciation),
+                            Text(
+                              _t(poem.appreciation!),
+                              style: TextStyle(
+                                  fontSize: _fontSize - 2,
+                                  height: 1.8,
+                                  color: _immersive
+                                      ? Colors.white70
+                                      : theme.colorScheme.onSurface
+                                          .withOpacity(0.85)),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                  ],
                       // 创作背景
                       if (poem.background != null) ...[
                         const SizedBox(height: 24),
@@ -481,7 +527,11 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
 
   /// 分割纹：左右细线夹一枚朱砂小方印（画布上的「分割纹」）
   Widget _buildDivider(ThemeData theme) {
-    final color = _immersive ? Colors.white : theme.colorScheme.outline;
+    final c = ShiciColors.of(context);
+    // 沉浸模式是纯黑底（固定色块，不随模式变），白色前景恒成立
+    final color = !_immersive
+        ? theme.colorScheme.outline
+        : Colors.white; // keep: fixed-block
     return Row(
       children: [
         Expanded(child: Divider(color: color.withOpacity(0.25), height: 1)),
@@ -490,7 +540,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
           width: 10,
           height: 10,
           decoration: BoxDecoration(
-            color: _immersive ? Colors.white70 : AppTheme.zhuShaHong,
+            color: _immersive ? Colors.white70 : c.cinnabar, // keep: fixed-block
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -502,6 +552,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
 
   /// 作者行：小圆印 + 朝代 · 作者 · 体裁
   Widget _authorLine(Poem poem) {
+    final c = ShiciColors.of(context);
     final isLight = !_immersive;
     final fg = _immersive
         ? Colors.white60
@@ -522,8 +573,8 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
             shape: BoxShape.circle,
             border: Border.all(
               color: isLight
-                  ? AppTheme.zhuShaHong
-                  : Colors.white.withOpacity(0.6),
+                  ? c.cinnabar
+                  : Colors.white.withOpacity(0.6), // keep: fixed-block
               width: 1.2,
             ),
           ),
@@ -532,7 +583,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
             style: ShiciText.calligraphy.copyWith(
               fontSize: 10,
               height: 1.0,
-              color: isLight ? AppTheme.zhuShaHong : Colors.white,
+              color: isLight ? c.cinnabar : Colors.white, // keep: fixed-block
             ),
           ),
         ),
@@ -563,13 +614,14 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
 
   /// 区块小标签：朱砂 11 号 + 字间距 2（画布上「译 文」「赏 析」的写法）
   Widget _sectionLabel(String title) {
+    final c = ShiciColors.of(context);
     return Text(
       title,
       style: ShiciText.caption.copyWith(
         fontSize: 11,
         letterSpacing: 2,
         fontWeight: FontWeight.w600,
-        color: _immersive ? Colors.white70 : AppTheme.zhuShaHong,
+        color: _immersive ? Colors.white70 : c.cinnabar, // keep: fixed-block
       ),
     );
   }
@@ -587,9 +639,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
     if (line.trim().isEmpty) return const SizedBox(height: 8);
     final pairs = PinyinHelper.splitWithPinyin(line);
     final textColor =
-        _immersive ? Colors.white : theme.colorScheme.onSurface;
+        _immersive ? Colors.white : theme.colorScheme.onSurface; // keep: fixed-block
     final pinyinColor =
-        _immersive ? Colors.white70 : theme.colorScheme.primary;
+        _immersive ? Colors.white70 : theme.colorScheme.primary; // keep: fixed-block
     // 计算拼音字号：取最长拼音动态缩放，确保不截断
     double pinyinFontSize = _fontSize * 0.48;
     final maxPyLen = pairs
@@ -789,21 +841,21 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   }
 
   Widget _buildTtsBar(ThemeData theme) {
+    final c = ShiciColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withOpacity(0.1), // keep: fixed-block
               blurRadius: 8,
               offset: const Offset(0, -2))
         ],
       ),
       child: Row(
         children: [
-          const PoemIcon(PoemIcons.tts,
-              color: AppTheme.zhuShaHong, size: 20),
+          PoemIcon(PoemIcons.tts, color: c.cinnabar, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Text('正在朗读...', style: theme.textTheme.bodySmall),
@@ -930,7 +982,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                 return ListTile(
                   leading: PoemIcon(
                     alreadyIn ? PoemIcons.done : PoemIcons.goal,
-                    color: alreadyIn ? AppTheme.songLv : AppTheme.daiLan,
+                    color: alreadyIn
+                        ? ShiciColors.of(ctx).pine
+                        : ShiciColors.of(ctx).indigo,
                   ),
                   title: Text(p.name),
                   subtitle: Text(alreadyIn ? '已在计划中' : '${p.poemIds.length} 首'),
@@ -938,9 +992,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                 );
               }),
             ListTile(
-              leading: const Icon(Icons.add, color: AppTheme.zhuShaHong),
-              title: const Text('新建学习计划',
-                  style: TextStyle(color: AppTheme.zhuShaHong)),
+              leading: Icon(Icons.add, color: ShiciColors.of(ctx).cinnabar),
+              title: Text('新建学习计划',
+                  style: TextStyle(color: ShiciColors.of(ctx).cinnabar)),
               onTap: () => Navigator.pop(ctx, -1),
             ),
             const SizedBox(height: 8),
@@ -1058,6 +1112,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   }
 
   Widget _buildNoteCard(StudyNote note, ThemeData theme) {
+    final c = ShiciColors.of(context);
     final date = note.updatedAt ?? note.createdAt;
     return ShadCard(
       padding: const EdgeInsets.all(12),
@@ -1102,15 +1157,14 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
               InkWell(
                 borderRadius: BorderRadius.circular(4),
                 onTap: () => _delNote(note),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 3),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.delete_outline,
-                        size: 13, color: AppTheme.zhuShaHong),
-                    SizedBox(width: 2),
+                    Icon(Icons.delete_outline, size: 13, color: c.cinnabar),
+                    const SizedBox(width: 2),
                     Text('删除',
-                        style: TextStyle(
-                            fontSize: 11, color: AppTheme.zhuShaHong)),
+                        style: TextStyle(fontSize: 11, color: c.cinnabar)),
                   ]),
                 ),
               ),

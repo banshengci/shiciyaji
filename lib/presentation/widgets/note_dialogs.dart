@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 
 /// 笔记编辑对话框返回结果：
 /// - null：用户点击 barrier / ESC 取消（dismiss）
@@ -47,6 +47,7 @@ Future<String?> showEditNoteDialog(
 /// - true：用户点「删除」确认
 /// - false：用户点「取消」
 Future<bool?> showDeleteNoteDialog(BuildContext context) async {
+  final c = ShiciColors.of(context);
   return showDialog<bool>(
     context: context,
     barrierDismissible: true,
@@ -61,7 +62,7 @@ Future<bool?> showDeleteNoteDialog(BuildContext context) async {
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, true),
           style: TextButton.styleFrom(
-            foregroundColor: AppTheme.zhuShaHong,
+            foregroundColor: c.cinnabar,
           ),
           child: const Text('删除'),
         ),

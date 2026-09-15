@@ -9,6 +9,7 @@ import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/poem_icon.dart';
+import '../widgets/poem_card_styles.dart';
 import '../widgets/shici_kit.dart';
 import 'poem_detail_page.dart';
 
@@ -35,22 +36,42 @@ class _SearchPageState extends State<SearchPage> {
   List<Dynasty> _dynasties = [];
   int? _selectedDynastyId; // null = 不限朝代
   String? _selectedType; // null = 不限体裁
-  final _types = ['五言绝句', '七言绝句', '五言律诗', '七言律诗', '词', '曲', '乐府', '散文'];
+  /// 体裁选项 —— 与诗词库同源，从库里实际出现过的 `poems.type` 取值生成。
+  ///
+  /// 早先这里写死过一份，含「乐府」「散文」两个库里根本没有的选项，
+  /// 选了只会搜出 0 条；现在随数据走，次序由 [sortPoemTypes] 固定。
+  List<String> _types = const <String>[];
 
   // 热门搜索词
   final _hotWords = ['李白', '苏轼', '静夜思', '春', '月', '乡', '边塞', '豪放', '婉约'];
+
+  /// 当前卡片样式 —— 与诗词库 / 收藏夹共享同一份偏好
+  PoemCardStyle _cardStyle = PoemCardStyleStore.fallback;
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
-    _loadDynasties();
+    _loadFilters();
+    _loadStyle();
   }
 
-  Future<void> _loadDynasties() async {
-    final dynasties = await DatabaseHelper.getAllDynasties();
+  /// 恢复上次选择的卡片样式
+  Future<void> _loadStyle() async {
+    final style = await PoemCardStyleStore.load();
+    if (mounted) setState(() => _cardStyle = style);
+  }
+
+  Future<void> _loadFilters() async {
+    final results = await Future.wait<Object>(<Future<Object>>[
+      DatabaseHelper.getAllDynasties(),
+      DatabaseHelper.getPoemTypes(),
+    ]);
     if (mounted) {
-      setState(() => _dynasties = dynasties);
+      setState(() {
+        _dynasties = results[0] as List<Dynasty>;
+        _types = sortPoemTypes(results[1] as List<String>);
+      });
     }
   }
 
@@ -168,6 +189,16 @@ class _SearchPageState extends State<SearchPage> {
         ),
         // 画布上搜索框右侧有「取消」
         actions: <Widget>[
+          // 卡片样式入口放在顶栏：它是「怎么看结果」的偏好，不该只在
+          // 出结果之后才出现（早先挂在筛选栏里），也不该混进「筛什么」的条件栏。
+          IconButton(
+            tooltip: '卡片样式：${_cardStyle.label}',
+            icon: PoemIcon(PoemIcons.sort,
+                size: 20, color: ShiciColors.of(context).inkSoft),
+            onPressed: _showCardStyleSheet,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
           TextButton(
             onPressed: () {
               _controller.clear();
@@ -188,7 +219,7 @@ class _SearchPageState extends State<SearchPage> {
       body: Column(
         children: [
           if (_hasSearched) _buildFilterBar(theme),
-          Expanded(child: _hasSearched ? _buildResults(theme) : _buildSuggestions(theme)),
+          Expanded(child: _hasSearched ? _buildResults() : _buildSuggestions(theme)),
         ],
       ),
     );
@@ -256,6 +287,14 @@ class _SearchPageState extends State<SearchPage> {
         ),
       ),
     );
+  }
+
+  /// 卡片样式切换
+  Future<void> _showCardStyleSheet() async {
+    final picked = await showPoemCardStylePicker(context, current: _cardStyle);
+    if (picked == null || picked == _cardStyle) return;
+    setState(() => _cardStyle = picked);
+    await PoemCardStyleStore.save(picked);
   }
 
   Widget _filterLabel(String text, bool active, ThemeData theme) {
@@ -375,7 +414,7 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  Widget _buildResults(ThemeData theme) {
+  Widget _buildResults() {
     if (_searching) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -404,35 +443,19 @@ class _SearchPageState extends State<SearchPage> {
             itemCount: _results.length,
             itemBuilder: (context, index) {
               final poem = _results[index];
-              final keyword = _controller.text;
-              final c = ShiciColors.of(context);
+              final keyword = _controller.text.trim();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: ShiciCard(
-                  padding: const EdgeInsets.all(14),
+                child: PoemListCard(
+                  poem: poem,
+                  style: _cardStyle,
+                  // 命中高亮与上下文片段由卡片承载：
+                  // 片段优先展示含关键词的那一句，直接回答「为什么搜到它」
+                  keyword: keyword,
+                  snippet: poemSnippet(poem, keyword),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                         builder: (_) => PoemDetailPage(poemId: poem.id)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 标题（高亮）
-                      _highlightText(poem.title, keyword, theme, isTitle: true),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${poem.dynastyName ?? ''} · ${poem.authorName ?? '佚名'}',
-                        style: ShiciText.caption.copyWith(color: c.inkSoft),
-                      ),
-                      const SizedBox(height: 6),
-                      // 内容片段（高亮）
-                      _highlightText(
-                        poem.content.split('\n').take(2).join('\n'),
-                        keyword,
-                        theme,
-                        maxLines: 2,
-                      ),
-                    ],
                   ),
                 ),
               );
@@ -440,61 +463,6 @@ class _SearchPageState extends State<SearchPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _highlightText(String text, String keyword, ThemeData theme, {bool isTitle = false, int maxLines = 1}) {
-    if (keyword.isEmpty) {
-      return Text(
-        text,
-        style: TextStyle(
-          fontSize: isTitle ? 16 : 13,
-          fontWeight: isTitle ? FontWeight.w600 : FontWeight.normal,
-          color: isTitle ? theme.colorScheme.onSurface : theme.colorScheme.onSurface.withOpacity(0.5),
-          fontFamily: 'serif',
-        ),
-        maxLines: maxLines,
-        overflow: TextOverflow.ellipsis,
-      );
-    }
-
-    final lowerText = text.toLowerCase();
-    final lowerKeyword = keyword.toLowerCase();
-    final spans = <TextSpan>[];
-    var start = 0;
-
-    while (start < text.length) {
-      final index = lowerText.indexOf(lowerKeyword, start);
-      if (index == -1) {
-        spans.add(TextSpan(text: text.substring(start)));
-        break;
-      }
-      if (index > start) {
-        spans.add(TextSpan(text: text.substring(start, index)));
-      }
-      spans.add(TextSpan(
-        text: text.substring(index, index + keyword.length),
-        style: TextStyle(
-          color: AppTheme.zhuShaHong,
-          backgroundColor: AppTheme.zhuShaHong.withOpacity( 0.1),
-        ),
-      ));
-      start = index + keyword.length;
-    }
-
-    return RichText(
-      maxLines: maxLines,
-      overflow: TextOverflow.ellipsis,
-      text: TextSpan(
-        style: TextStyle(
-          fontSize: isTitle ? 16 : 13,
-          fontWeight: isTitle ? FontWeight.w600 : FontWeight.normal,
-          color: isTitle ? theme.colorScheme.onSurface : theme.colorScheme.onSurface.withOpacity(0.5),
-          fontFamily: 'serif',
-          height: 1.6,
-        ),
-        children: spans,
-      ),
     );
   }
 

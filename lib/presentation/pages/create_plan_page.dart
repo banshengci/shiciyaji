@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/poem_icon.dart';
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 
@@ -54,6 +54,7 @@ class _CreatePlanPageState extends State<CreatePlanPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = ShiciColors.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('创建学习计划'),
@@ -150,10 +151,10 @@ class _CreatePlanPageState extends State<CreatePlanPage> {
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundColor: isSelected
-                              ? AppTheme.zhuShaHong
+                              ? c.cinnabar
                               : theme.colorScheme.surfaceContainerHighest,
                           child: isSelected
-                              ? const Icon(Icons.check, color: Colors.white, size: 18)
+                              ? Icon(Icons.check, color: c.onAccent, size: 18)
                               : Text('${poem.sortOrder}', style: TextStyle(fontSize: 12, color: theme.colorScheme.outline)),
                         ),
                         title: Text(poem.title, style: const TextStyle(fontFamily: 'serif')),
@@ -163,7 +164,7 @@ class _CreatePlanPageState extends State<CreatePlanPage> {
                         ),
                         trailing: Text(poem.type ?? '', style: TextStyle(fontSize: 10, color: theme.colorScheme.outline)),
                         selected: isSelected,
-                        selectedTileColor: AppTheme.zhuShaHong.withOpacity(0.05),
+                        selectedTileColor: c.cinnabar.withOpacity(0.05),
                         onTap: () {
                           setState(() {
                             if (isSelected) {

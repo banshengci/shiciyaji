@@ -39,17 +39,20 @@ class _StatsPageState extends State<StatsPage> {
   Map<String, int> _authorDist = {};
   Map<String, int> _favDynastyDist = {};
 
-  /// 新中式图表配色（取自画布色板，避免额外引入颜色）
-  static const List<Color> _palette = <Color>[
-    Color(0xFFC41A1A), // 朱砂
-    Color(0xFF1A2A3A), // 黛蓝
-    Color(0xFF4A6B52), // 松绿
-    Color(0xFFA8663B), // 赭石
-    Color(0xFFC9992E), // 藤黄
-    Color(0xFF2F5D8C), // 苍青
-    Color(0xFF8B6914), // 铜色
-    Color(0xFFA8A396), // 鸦白
-  ];
+  /// 新中式图表配色（取自画布色板，避免额外引入颜色）。
+  ///
+  /// 必须**按当前模式取令牌**而不是写死常量：这八个色里朱砂/黛蓝/松绿/赭石/藤黄
+  /// 在深色下都会换成提亮后的值，写死的话深色模式的饼图与条形图会整体糊进墨底。
+  List<Color> _paletteOf(ShiciColors c) => <Color>[
+        c.cinnabar, // 朱砂
+        c.indigo, // 黛蓝
+        c.pine, // 松绿
+        c.ochre, // 赭石
+        c.gamboge, // 藤黄
+        c.cerulean, // 苍青
+        c.bronze, // 古铜
+        c.inkFaint, // 鸦白
+      ];
 
   AchievementStats get _stats => AchievementStats(
         studiedCount: _studiedCount,
@@ -458,6 +461,7 @@ class _StatsPageState extends State<StatsPage> {
   Widget _buildDynastyPie(ShiciColors c) {
     if (_dynastyDist.isEmpty) return _emptyCard(c, '暂无学习记录');
     final total = _dynastyDist.values.fold(0, (a, b) => a + b);
+    final palette = _paletteOf(c);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -471,7 +475,7 @@ class _StatsPageState extends State<StatsPage> {
             width: 132,
             height: 132,
             child: CustomPaint(
-              painter: _PiePainter(_dynastyDist, _palette, c.silk),
+              painter: _PiePainter(_dynastyDist, palette, c.silk),
               child: const SizedBox.expand(),
             ),
           ),
@@ -489,7 +493,7 @@ class _StatsPageState extends State<StatsPage> {
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: _palette[e.key % _palette.length],
+                            color: palette[e.key % palette.length],
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -518,6 +522,7 @@ class _StatsPageState extends State<StatsPage> {
       ShiciColors c, Map<String, int> data, int offset, String emptyText) {
     if (data.isEmpty) return _emptyCard(c, emptyText);
     final maxVal = data.values.fold<int>(0, (a, b) => a > b ? a : b);
+    final palette = _paletteOf(c);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -550,7 +555,7 @@ class _StatsPageState extends State<StatsPage> {
                             maxVal > 0 ? e.value.value / maxVal : 0.0,
                         minHeight: 12,
                         backgroundColor: c.sand,
-                        color: _palette[(e.key + offset) % _palette.length],
+                        color: palette[(e.key + offset) % palette.length],
                       ),
                     ),
                   ),

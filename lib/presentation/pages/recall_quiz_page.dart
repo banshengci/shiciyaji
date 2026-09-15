@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import '../widgets/poem_icon.dart';
@@ -123,6 +123,7 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
   }
 
   Widget _buildSummary(ThemeData theme) {
+    final c = ShiciColors.of(context);
     final total = _poems.length;
     final rate = total > 0 ? (_pass / total * 100).toStringAsFixed(0) : '0';
     return Center(
@@ -131,8 +132,7 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.emoji_events_outlined,
-                size: 64, color: AppTheme.songLv),
+            Icon(Icons.emoji_events_outlined, size: 64, color: c.pine),
             const SizedBox(height: 16),
             Text('本轮自测完成',
                 style: theme.textTheme.titleLarge
@@ -141,9 +141,9 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _resultCell('记住了', _pass, AppTheme.songLv, theme),
-                _resultCell('没记住', _fail, AppTheme.zhuShaHong, theme),
-                _resultCell('正确率', '$rate%', AppTheme.daiLan, theme),
+                _resultCell('记住了', _pass, c.pine, theme),
+                _resultCell('没记住', _fail, c.cinnabar, theme),
+                _resultCell('正确率', '$rate%', c.indigo, theme),
               ],
             ),
             const SizedBox(height: 24),
@@ -162,7 +162,8 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.songLv),
+                      backgroundColor: c.pine,
+                      foregroundColor: c.onAccent),
                   child: const Text('完成'),
                 ),
               ],
@@ -189,6 +190,7 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
   }
 
   Widget _buildQuiz(ThemeData theme) {
+    final c = ShiciColors.of(context);
     final poem = _poems[_index];
     final total = _poems.length;
     final progress = (_index + 1) / total;
@@ -212,7 +214,7 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
             value: progress,
             minHeight: 6,
             backgroundColor: theme.colorScheme.surfaceContainerHighest,
-            color: AppTheme.songLv,
+            color: c.pine,
             borderRadius: BorderRadius.circular(3),
           ),
           const SizedBox(height: 24),
@@ -238,10 +240,10 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: AppTheme.songLv.withOpacity(0.06),
+                        color: c.pine.withOpacity(0.06),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                            color: AppTheme.songLv.withOpacity(0.25)),
+                            color: c.pine.withOpacity(0.25)),
                       ),
                       child: Text(
                         poem.content,
@@ -262,8 +264,8 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
                       ),
                       child: Column(
                         children: [
-                          const Icon(Icons.visibility_off_outlined,
-                              size: 40, color: AppTheme.qingHui),
+                          Icon(Icons.visibility_off_outlined,
+                              size: 40, color: c.inkSoft),
                           const SizedBox(height: 12),
                           Text(
                             '先试着背出来，再对照原文',
@@ -293,7 +295,7 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
                   icon: const Icon(Icons.close, size: 18),
                   label: const Text('没记住'),
                   style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.zhuShaHong),
+                      foregroundColor: c.cinnabar),
                 ),
               ),
               const SizedBox(width: 12),
@@ -303,7 +305,8 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
                   icon: const Icon(Icons.check, size: 18),
                   label: const Text('记住了'),
                   style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.songLv),
+                      backgroundColor: c.pine,
+                      foregroundColor: c.onAccent),
                 ),
               ),
             ],

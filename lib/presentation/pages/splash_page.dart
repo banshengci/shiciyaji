@@ -102,7 +102,7 @@ class _SplashPageState extends State<SplashPage>
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   // 方印
-                  SealMark(size: 76, color: c.cinnabar, glyphColor: c.paper),
+                  SealMark(size: 76, color: c.cinnabar, glyphColor: c.onAccent),
                   const SizedBox(height: 30),
                   // 书法字标
                   Text(

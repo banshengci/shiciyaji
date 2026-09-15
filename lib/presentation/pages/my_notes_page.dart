@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../widgets/poem_icon.dart';
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import '../widgets/empty_state.dart';
@@ -75,6 +75,7 @@ class _MyNotesPageState extends State<MyNotesPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = ShiciColors.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('我的笔记')),
       body: _loading
@@ -114,12 +115,12 @@ class _MyNotesPageState extends State<MyNotesPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: Row(
                     children: [
-                      _tag('笔记总数', '$_totalCount', AppTheme.zhuShaHong, theme),
+                      _tag('笔记总数', '$_totalCount', c.cinnabar, theme),
                       const SizedBox(width: 8),
-                      _tag('记有笔记的诗词', '$_notedPoemsCount', AppTheme.daiLan, theme),
+                      _tag('记有笔记的诗词', '$_notedPoemsCount', c.indigo, theme),
                       if (_searchController.text.isNotEmpty) ...[
                         const SizedBox(width: 8),
-                        _tag('当前结果', '${_allNotes.length}', AppTheme.songLv, theme),
+                        _tag('当前结果', '${_allNotes.length}', c.pine, theme),
                       ],
                     ],
                   ),
@@ -171,6 +172,7 @@ class _MyNotesPageState extends State<MyNotesPage> {
   }
 
   Widget _buildGroup(List<StudyNote> group, ThemeData theme) {
+    final c = ShiciColors.of(context);
     final head = group.first;
     final poemId = head.poemId;
     final title = head.poemTitle ?? '诗 $poemId';
@@ -204,8 +206,8 @@ class _MyNotesPageState extends State<MyNotesPage> {
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: AppTheme.daiLan.withOpacity(0.15),
-                    child: Text('${group.length}', style: const TextStyle(color: AppTheme.daiLan, fontWeight: FontWeight.bold, fontSize: 14)),
+                    backgroundColor: c.indigo.withOpacity(0.15),
+                    child: Text('${group.length}', style: TextStyle(color: c.indigo, fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -239,6 +241,7 @@ class _MyNotesPageState extends State<MyNotesPage> {
   }
 
   Widget _buildNoteTile(StudyNote note, ThemeData theme, int totalInGroup) {
+    final c = ShiciColors.of(context);
     final date = note.updatedAt ?? note.createdAt;
     final dateStr = date.length >= 16 ? date.substring(0, 16) : date;
     return Padding(
@@ -261,7 +264,7 @@ class _MyNotesPageState extends State<MyNotesPage> {
                 Expanded(child: Text(dateStr, style: TextStyle(fontSize: 11, color: theme.colorScheme.outline))),
                 _miniBtn(PoemIcons.edit, '编辑', theme.colorScheme.outline, () => _editNote(note, theme)),
                 const SizedBox(width: 4),
-                _miniBtn(Icons.delete_outline, '删除', AppTheme.zhuShaHong, () => _delNote(note)),
+                _miniBtn(Icons.delete_outline, '删除', c.cinnabar, () => _delNote(note)),
               ],
             ),
           ],

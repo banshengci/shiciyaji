@@ -186,7 +186,13 @@ class _SettingsPageState extends State<SettingsPage> {
         height: 120,
         padding: const EdgeInsets.symmetric(horizontal: 22),
         decoration: BoxDecoration(
-          color: c.indigo,
+          // 走 deepFrom/deepTo 而不是 indigo：这是「固定深块」，
+          // 深色模式下必须比墨底页面亮一档，且其上的文字恒为纸白
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[c.deepFrom, c.deepTo],
+          ),
           borderRadius: BorderRadius.circular(ShiciSize.rLg),
         ),
         child: Row(
@@ -205,7 +211,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: ShiciText.calligraphy.copyWith(
                   fontSize: 34,
                   height: 1.0,
-                  color: c.paper,
+                  color: c.onAccent,
                 ),
               ),
             ),
@@ -220,7 +226,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: ShiciText.title.copyWith(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: c.paper,
+                      color: c.onDeep,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -230,7 +236,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     '已加入 $_joinedDays 天 · 共读 $_studiedCount 首',
                     style: ShiciText.caption.copyWith(
                       fontSize: 12,
-                      color: c.paper.withOpacity(0.62),
+                      color: c.onDeep.withOpacity(0.68),
                     ),
                   ),
                 ],
@@ -435,6 +441,7 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = ShiciColors.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
@@ -448,8 +455,7 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
               children: [
                 Row(
                   children: [
-                    const PoemIcon(PoemIcons.streak,
-                        color: AppTheme.zhuShaHong, size: 24),
+                    PoemIcon(PoemIcons.streak, color: c.cinnabar, size: 24),
                     const SizedBox(width: 8),
                     Text('学习统计',
                         style: theme.textTheme.titleLarge
@@ -666,8 +672,8 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.cloud_upload_outlined,
-                      color: AppTheme.songLv),
+                  leading: Icon(Icons.cloud_upload_outlined,
+                      color: c.pine),
                   title: const Text('备份全部数据'),
                   subtitle: const Text('收藏 / 计划 / 打卡 / 笔记 / 离线包'),
                   trailing: const Icon(Icons.chevron_right),
@@ -675,8 +681,8 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.cloud_download_outlined,
-                      color: AppTheme.songLv),
+                  leading: Icon(Icons.cloud_download_outlined,
+                      color: c.pine),
                   title: const Text('从备份恢复'),
                   subtitle: const Text('合并导入，不会覆盖现有数据'),
                   trailing: const Icon(Icons.chevron_right),
@@ -797,7 +803,9 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
           label,
           style: TextStyle(
             fontSize: 13,
-            color: selected ? Colors.white : theme.colorScheme.onSurface,
+            color: selected
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurface,
             fontFamily: family,
           ),
         ),
@@ -1253,6 +1261,7 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = ShiciColors.of(context);
     return SizedBox(
       width: 80,
       child: Column(
@@ -1263,12 +1272,12 @@ class _Badge extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: unlocked
-                  ? AppTheme.zhuShaHong.withOpacity(0.15)
+                  ? c.cinnabar.withOpacity(0.15)
                   : theme.colorScheme.surfaceContainerHighest,
             ),
             child: Icon(
               icon,
-              color: unlocked ? AppTheme.zhuShaHong : theme.colorScheme.outline,
+              color: unlocked ? c.cinnabar : theme.colorScheme.outline,
               size: 24,
             ),
           ),

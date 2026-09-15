@@ -22,10 +22,10 @@ class AppTheme {
 
   // 扩展色彩（图表/装饰用）
   static const Color qingCang = Color(0xFF4F6F8F); // 苍青
-  static const Color shiHuang = Color(0xFFC9992E); // 辅-藤黄（原石黄）
+  static const Color shiHuang = Color(0xFF7E601B); // 辅-藤黄（原石黄）
   static const Color songLv = Color(0xFF4A6B52); // 辅-松绿
-  static const Color tongSe = Color(0xFFA8663B); // 辅-赭石（原铜色）
-  static const Color yaBai = Color(0xFFA8A396); // 字-三
+  static const Color tongSe = Color(0xFF925933); // 辅-赭石（原铜色）
+  static const Color yaBai = Color(0xFF8D8776); // 字-三
 
   // 深色（= ShiciColors.dark 对应项）
   static const Color darkSurface = Color(0xFF12171C);
@@ -49,11 +49,13 @@ class AppTheme {
       colorScheme: ColorScheme(
         brightness: brightness,
         primary: c.indigo,
-        onPrimary: c.silk,
+        // 品牌色在深色下会变亮、在浅色下是深色，因此压在它上面的前景必须跟着翻转。
+        // 这里统一走 onAccent，不要用 silk/paper —— 那是「卡片底色」的语义。
+        onPrimary: c.onAccent,
         secondary: c.cinnabar,
-        onSecondary: Colors.white,
+        onSecondary: c.onAccent,
         error: c.cinnabar,
-        onError: Colors.white,
+        onError: c.onAccent,
         surface: c.silk,
         onSurface: c.ink,
         surfaceContainerHighest: c.sand,
@@ -97,7 +99,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: c.ink,
-        contentTextStyle: ShiciText.heading.copyWith(color: c.paper),
+        contentTextStyle: ShiciText.heading.copyWith(color: c.onAccent),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(ShiciSize.rMd),
@@ -145,7 +147,7 @@ class AppTheme {
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: c.indigo,
-          foregroundColor: c.silk,
+          foregroundColor: c.onAccent,
           textStyle: ShiciText.heading,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(ShiciSize.rCapsule),
@@ -244,20 +246,21 @@ class AppTheme {
           cardForeground: darkText,
           popover: darkCard,
           popoverForeground: darkText,
-          primary: Color(0xFF2E4257),
-          primaryForeground: darkText,
+          // 深色下黛蓝抬到月白；压在它上的前景随之由宣纸白改为墨底
+          primary: Color(0xFF6F96BE),
+          primaryForeground: Color(0xFF12171C),
           secondary: Color(0xFF212933),
           secondaryForeground: darkText,
           muted: Color(0xFF212933),
           mutedForeground: Color(0xFF99A3B2),
           accent: qingCang,
           accentForeground: Colors.white,
-          destructive: Color(0xFFD94A3D),
-          destructiveForeground: Colors.white,
+          destructive: Color(0xFFEB6767),
+          destructiveForeground: Color(0xFF12171C),
           border: Color(0xFF2B333D),
           input: Color(0xFF2B333D),
-          ring: Color(0xFF2E4257),
-          selection: Color(0x4F2E4257),
+          ring: Color(0xFF6F96BE),
+          selection: Color(0x4F6F96BE),
         ),
         textTheme: ShadTextTheme(family: ShiciFont.serif),
         radius: const BorderRadius.all(Radius.circular(ShiciSize.rMd)),

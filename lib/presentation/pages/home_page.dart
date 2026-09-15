@@ -5,9 +5,11 @@ import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import '../widgets/poem_icon.dart';
+import '../widgets/poem_share_cards.dart';
 import '../widgets/shici_kit.dart';
 import 'authors_page.dart';
 import 'flying_flower_page.dart';
+import 'poem_card_page.dart';
 import 'poem_detail_page.dart';
 import 'review_page.dart';
 
@@ -151,10 +153,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ── 今日推荐卡：黛蓝渐变 + 朱砂日轮 + 远山 + 诗句 ─────────────────
+  // ── 今日推荐卡：黛蓝渐变 + 朱砂日轮 + 远山 + 名句 ─────────────────
+  //
+  // 卡面取的是「名句」而不是正文首句：每日一诗的价值在于那一句记得住的话，
+  // 且与分享卡（04 名句摘录）同源 —— 首页看到什么，分享出去就是什么。
   Widget _heroCard(ShiciColors c, Poem poem) {
-    final firstLine = poem.content.split('\n').first;
-    final author = poem.authorName ?? '佚名';
+    final quote = poemQuoteOf(poem);
 
     return GestureDetector(
       // 长按换一首（画布上没有刷新按钮，用长按承载这个动作）
@@ -164,10 +168,12 @@ class _HomePageState extends State<HomePage> {
         height: 210,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(ShiciSize.rLg),
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: <Color>[Color(0xFF1A293B), Color(0xFF2E4257)],
+            // 与分享卡同源的黛蓝渐变。深色模式下整体抬一档，
+            // 否则 #1A293B 落在墨底页面上会糊成一片（可分辨度仅 1.22:1）
+            colors: <Color>[c.deepFrom, c.deepTo],
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -194,48 +200,92 @@ class _HomePageState extends State<HomePage> {
               height: 120,
               child: Opacity(
                 opacity: 0.10,
-                child: InkMountain(size: null, inkColor: Colors.white),
+                // 这块远山压在「今日推荐」那张固定深色卡上，两模式都是深底，
+                // 所以白色墨色恒成立（深块不随模式变，分享图才能复现）。
+                child: InkMountain(size: null, inkColor: Colors.white), // keep: fixed-block
               ),
             ),
             Padding(
               padding: const EdgeInsets.all(22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                // 名句只有一行时卡内会空出四十来像素，交给居中分配，
+                // 免得文字全挤在上半部、下缘留一道死白
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   Text(
                     '今日推荐',
                     style: ShiciText.caption.copyWith(
                       fontSize: 11,
-                      color: c.paper.withOpacity(0.66),
+                      color: c.onDeep.withOpacity(0.68),
                     ),
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    firstLine,
+                    quote.primary,
                     style: ShiciText.subtitle.copyWith(
                       fontSize: 22,
                       fontWeight: FontWeight.w500,
                       height: 1.5,
-                      color: c.paper,
+                      color: c.onDeep,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '$author · ${poem.title}',
-                    style: ShiciText.caption.copyWith(
-                      fontSize: 13,
-                      color: c.paper.withOpacity(0.66),
+                  if (quote.hasSecondary) ...<Widget>[
+                    const SizedBox(height: 6),
+                    Text(
+                      quote.secondary,
+                      style: ShiciText.caption.copyWith(
+                        fontSize: 14,
+                        height: 1.5,
+                        color: c.onDeep.withOpacity(0.76),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  ],
+                  const SizedBox(height: 6),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          quote.source,
+                          style: ShiciText.caption.copyWith(
+                            fontSize: 12,
+                            color: c.onDeep.withOpacity(0.68),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      _heroShareAction(c, poem),
+                    ],
                   ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 今日推荐卡内的分享入口 —— 只在卡上放一个图形按钮，
+  /// 不让文案行腾出空间，诗句的可用宽度也就不会被压窄。
+  Widget _heroShareAction(ShiciColors c, Poem poem) {
+    return GestureDetector(
+      onTap: () => _openCard(poem),
+      child: Container(
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: c.onDeep.withOpacity(0.16),
+          shape: BoxShape.circle,
+        ),
+        child: PoemIcon(PoemIcons.share, size: 15, color: c.onDeep),
       ),
     );
   }
@@ -284,11 +334,11 @@ class _HomePageState extends State<HomePage> {
                   style: ShiciText.heading.copyWith(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: c.paper,
+                    color: c.onAccent,
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(Icons.chevron_right, size: 14, color: c.paper),
+                Icon(Icons.chevron_right, size: 14, color: c.onAccent),
               ],
             ),
           ),
@@ -388,6 +438,13 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// 打开诗词卡片（分享页）—— 与详情页的分享入口落到同一个页面
+  void _openCard(Poem poem) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PoemCardPage(poem: poem)),
     );
   }
 

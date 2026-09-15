@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 
 /// 日历热力图打卡视图（类似 GitHub Contribution Graph）
 class CalendarHeatmap extends StatefulWidget {
@@ -153,8 +153,8 @@ class _CalendarHeatmapState extends State<CalendarHeatmap> {
     if (count == 0) {
       return theme.colorScheme.surfaceContainerHighest.withOpacity(0.5);
     }
-    // 从浅到深
-    const base = AppTheme.zhuShaHong;
+    // 从浅到深。底色必须随明暗模式取令牌 —— 恒定浅色朱砂压在墨底上会整片糊掉。
+    final base = ShiciColors.ofOr(theme.brightness).cinnabar;
     if (count == 1) return base.withOpacity(0.25);
     if (count == 2) return base.withOpacity(0.45);
     if (count == 3) return base.withOpacity(0.65);

@@ -283,7 +283,9 @@ class _ReviewPageState extends State<ReviewPage> {
               style: ShiciText.body.copyWith(
                 fontSize: 16,
                 height: 1.9,
-                color: const Color(0xFF2E4257),
+                // 原先写死 #2E4257：深色下那是很深的一笔，压在墨底卡片上只剩 1.75:1。
+                // 正文一律走 ink，明暗都由令牌决定
+                color: c.ink,
               ),
             ),
             const SizedBox(height: 10),
@@ -356,7 +358,7 @@ class _ReviewPageState extends State<ReviewPage> {
         const SizedBox(width: 12),
         pill(
           label: '记住了',
-          fg: c.paper,
+          fg: c.onAccent,
           bg: c.pine,
           onTap: () => _advance(item, '学习中', '记住了'),
         ),

@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/poem_icon.dart';
 import '../../core/s2t_converter.dart';
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import 'poem_detail_page.dart';
@@ -78,6 +78,7 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = ShiciColors.of(context);
     final name = _author?.name ?? widget.authorName ?? '';
     return Scaffold(
       appBar: AppBar(title: Text(_t(name.isEmpty ? '诗人' : name))),
@@ -98,8 +99,7 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
                     const SizedBox(height: 24),
                     Row(
                       children: [
-                        const PoemIcon(PoemIcons.library,
-                            size: 18, color: AppTheme.songLv),
+                        PoemIcon(PoemIcons.library, size: 18, color: c.pine),
                         const SizedBox(width: 6),
                         Text('作品 ${_poems.length} 首',
                             style: theme.textTheme.titleMedium
@@ -123,13 +123,14 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
   }
 
   Widget _buildHeader(ThemeData theme, String name) {
+    final c = ShiciColors.of(context);
     final span = _lifeSpan;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.songLv.withOpacity(0.25)),
+        border: Border.all(color: c.pine.withOpacity(0.25)),
       ),
       child: Row(
         children: [
@@ -139,15 +140,15 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
             height: 56,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppTheme.zhuShaHong.withOpacity(0.9),
+              color: c.cinnabar.withOpacity(0.9),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               name.isEmpty
                   ? '？'
                   : _t(String.fromCharCode(name.runes.first)),
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: c.onAccent,
                 fontSize: 26,
                 fontFamily: 'serif',
                 fontWeight: FontWeight.bold,
@@ -184,12 +185,13 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
   }
 
   Widget _buildBio(ThemeData theme) {
+    final c = ShiciColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const PoemIcon(PoemIcons.profile, size: 18, color: AppTheme.songLv),
+            PoemIcon(PoemIcons.profile, size: 18, color: c.pine),
             const SizedBox(width: 6),
             Text('生平',
                 style: theme.textTheme.titleMedium

@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/poem_icon.dart';
 import '../../core/s2t_converter.dart';
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 
@@ -121,7 +121,8 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
 
   /// 将令字高亮（答题后展示命中句用）。
   /// [text] 可能已转繁体，因此同时匹配简/繁令字。
-  Widget _highlightLine(String text, ThemeData theme, {bool revealed = false}) {
+  Widget _highlightLine(String text, ThemeData theme, ShiciColors c,
+      {bool revealed = false}) {
     final chars = <String>{_playChar, _t(_playChar)};
     final spans = <TextSpan>[];
     var i = 0;
@@ -138,7 +139,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
         spans.add(TextSpan(
           text: hit,
           style: TextStyle(
-            color: revealed ? AppTheme.zhuShaHong : theme.colorScheme.primary,
+            color: revealed ? c.cinnabar : theme.colorScheme.primary,
             fontWeight: FontWeight.bold,
           ),
         ));
@@ -289,13 +290,14 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
 
   // ---- 开始页 ----
   Widget _buildStart(ThemeData theme) {
+    final c = ShiciColors.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const PoemIcon(PoemIcons.feihualing, size: 64, color: AppTheme.zhuShaHong),
+            PoemIcon(PoemIcons.feihualing, size: 64, color: c.cinnabar),
             const SizedBox(height: 16),
             Text('飞花令',
                 style: theme.textTheme.headlineMedium
@@ -313,9 +315,9 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: AppTheme.xuanZhiBai,
-                borderRadius: BorderRadius.all(Radius.circular(14)),
+              decoration: BoxDecoration(
+                color: c.silk,
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -324,11 +326,11 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
                       style: theme.textTheme.bodyMedium),
                   Text(
                     _t(_playChar),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 48,
                       fontFamily: 'serif',
                       fontWeight: FontWeight.bold,
-                      color: AppTheme.zhuShaHong,
+                      color: c.cinnabar,
                     ),
                   ),
                 ],
@@ -341,8 +343,8 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
             ElevatedButton(
               onPressed: _allCharPoems.isEmpty ? null : _startGame,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.songLv,
-                foregroundColor: Colors.white,
+                backgroundColor: c.pine,
+                foregroundColor: c.onAccent,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                 shape: RoundedRectangleBorder(
@@ -358,6 +360,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
 
   // ---- 游戏进行中 ----
   Widget _buildGame(ThemeData theme) {
+    final c = ShiciColors.of(context);
     return Column(
       children: [
         // 顶栏：进度 + 分数 + 连击
@@ -368,9 +371,9 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
             animation: _timerCtrl,
             builder: (_, __) => LinearProgressIndicator(
               value: 1.0 - _timerCtrl.value,
-              backgroundColor: Colors.grey[300],
+              backgroundColor: c.sand,
               valueColor: AlwaysStoppedAnimation<Color>(
-                _timerCtrl.value > 0.3 ? AppTheme.songLv : AppTheme.zhuShaHong,
+                _timerCtrl.value > 0.3 ? c.pine : c.cinnabar,
               ),
               minHeight: 4,
             ),
@@ -386,6 +389,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
   }
 
   Widget _buildScoreBar(ThemeData theme) {
+    final c = ShiciColors.of(context);
     final total = _totalRounds;
     final progress = total > 0 ? (_currentIndex + 1) / total : 0.0;
     return Container(
@@ -402,31 +406,30 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
           Expanded(
             child: LinearProgressIndicator(
               value: progress,
-              backgroundColor: Colors.grey[300],
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppTheme.songLv),
+              backgroundColor: c.sand,
+              valueColor: AlwaysStoppedAnimation<Color>(c.pine),
               minHeight: 4,
             ),
           ),
           const SizedBox(width: 12),
           // 分数
-          const Icon(Icons.star, color: AppTheme.shiHuang, size: 18),
+          Icon(Icons.star, color: c.gamboge, size: 18),
           const SizedBox(width: 4),
           Text('$_score',
               style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.bold, color: AppTheme.shiHuang)),
+                  fontWeight: FontWeight.bold, color: c.gamboge)),
           // 连击
           if (_combo > 1) ...[
             const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: AppTheme.zhuShaHong,
+                color: c.cinnabar,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text('×$_combo',
-                  style: const TextStyle(
-                      color: Colors.white,
+                  style: TextStyle(
+                      color: c.onAccent,
                       fontWeight: FontWeight.bold,
                       fontSize: 13)),
             ),
@@ -437,6 +440,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
   }
 
   Widget _buildQuestion(ThemeData theme) {
+    final c = ShiciColors.of(context);
     final correct = _allCharPoems[_currentIndex];
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -461,11 +465,11 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
                 Color? borderColor;
                 if (_answered) {
                   if (isCorrectOpt) {
-                    bgColor = Colors.green.withOpacity(0.12);
-                    borderColor = Colors.green;
+                    bgColor = c.pine.withOpacity(0.12);
+                    borderColor = c.pine;
                   } else if (isChosen && !isCorrectOpt) {
-                    bgColor = Colors.red.withOpacity(0.12);
-                    borderColor = Colors.red;
+                    bgColor = c.cinnabar.withOpacity(0.12);
+                    borderColor = c.cinnabar;
                   }
                 }
                 // 答题前：节选前两行（考验是否记得全文）
@@ -505,15 +509,15 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: _answered && isCorrectOpt
-                                    ? Colors.green[800]
+                                    ? c.pine
                                     : _answered && isChosen && !isCorrectOpt
-                                        ? Colors.red[800]
+                                        ? c.cinnabar
                                         : null,
                               ),
                             ),
                             const SizedBox(height: 4),
                             if (_answered && isCorrectOpt)
-                              _highlightLine(_t(preview), theme, revealed: true)
+                              _highlightLine(_t(preview), theme, c, revealed: true)
                             else
                               Text(
                                 _t(preview),
@@ -568,6 +572,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
 
   // ---- 结算页 ----
   Widget _buildResult(ThemeData theme) {
+    final c = ShiciColors.of(context);
     final total = _correct + _wrong;
     final rate = total > 0 ? (_correct / total * 100).round() : 0;
     return Center(
@@ -579,7 +584,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
             PoemIcon(
               _score > 100 ? PoemIcons.achievement : PoemIcons.feihualing,
               size: 64,
-              color: _score > 100 ? AppTheme.shiHuang : AppTheme.zhuShaHong,
+              color: _score > 100 ? c.gamboge : c.cinnabar,
             ),
             const SizedBox(height: 16),
             Text('飞花令结束',
@@ -589,22 +594,22 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
             // 得分
             Text(
               '$_score',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 56,
                 fontWeight: FontWeight.bold,
                 fontFamily: 'serif',
-                color: AppTheme.shiHuang,
+                color: c.gamboge,
               ),
             ),
-            const Text('分', style: TextStyle(color: AppTheme.qingHui)),
+            Text('分', style: TextStyle(color: c.inkSoft)),
             const SizedBox(height: 16),
             // 统计
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _resultStat('正确', '$_correct', Colors.green, theme),
-                _resultStat('错误', '$_wrong', Colors.red, theme),
-                _resultStat('正确率', '$rate%', AppTheme.songLv, theme),
+                _resultStat('正确', '$_correct', c.pine, theme),
+                _resultStat('错误', '$_wrong', c.cinnabar, theme),
+                _resultStat('正确率', '$rate%', c.pine, theme),
               ],
             ),
             const SizedBox(height: 32),
@@ -641,8 +646,8 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
                     _startGame();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.songLv,
-                    foregroundColor: Colors.white,
+                    backgroundColor: c.pine,
+                    foregroundColor: c.onAccent,
                   ),
                   child: const Text('再来一轮'),
                 ),

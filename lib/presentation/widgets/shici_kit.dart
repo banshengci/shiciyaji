@@ -43,7 +43,8 @@ class SealMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = ShiciColors.of(context);
     final bg = color ?? c.cinnabar;
-    final fg = glyphColor ?? (outlined ? bg : c.silk);
+    // 印文压在朱砂实色上 —— 深色模式下朱砂转珊瑚，字就得从纸白翻成墨底
+    final fg = glyphColor ?? (outlined ? bg : c.onAccent);
 
     return Container(
       width: size,
@@ -244,7 +245,8 @@ class ShiciPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = ShiciColors.of(context);
-    final fg = selected ? c.silk : c.ink;
+    // 选中态是黛蓝实心胶囊：深色下黛蓝转月白，前景必须跟着翻成墨底
+    final fg = selected ? c.onAccent : c.ink;
 
     return GestureDetector(
       onTap: onTap,

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import '../widgets/poem_icon.dart';
@@ -38,6 +38,7 @@ class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = ShiciColors.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('阅读历史'),
@@ -81,14 +82,14 @@ class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
                                 height: 32,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: AppTheme.daiLan.withOpacity(0.1),
+                                  color: c.indigo.withOpacity(0.1),
                                 ),
                                 child: Center(
                                   child: Text(
                                     '${index + 1}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
-                                      color: AppTheme.daiLan,
+                                      color: c.indigo,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),

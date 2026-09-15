@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// 自有图标集名称表 —— 与 `assets/icons/` 下的 32 枚 SVG 一一对应。
+/// 自有图标集名称表 —— 与 `assets/icons/` 下的 33 枚 SVG 一一对应。
 ///
 /// 取形于匾额、书卷、竹简、印章、沙漏、花瓣，统一 24px 网格 / 1.5px 描边。
 /// 使用方式见 [PoemIcon]。
@@ -47,6 +47,9 @@ class PoemIcons {
   static const String filter = 'filter';
   static const String sort = 'sort';
   static const String random = 'random';
+
+  /// 对照阅读（05 赏析 · 注释卡）
+  static const String parallel = 'parallel';
 
   /// 需要「选中/未选中」两态时，用同一枚图标换色即可（不自带实心版）。
   static const String assetDir = 'assets/icons';

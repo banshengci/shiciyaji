@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../widgets/poem_icon.dart';
 import '../widgets/shici_kit.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/poem_card_styles.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
@@ -30,12 +31,25 @@ class _FavoritesPageState extends State<FavoritesPage> {
   int _segment = 0; // 0 全部 / 1 唐诗 / 2 宋词
   bool _loading = true;
 
+  /// 当前卡片样式 —— 与诗词库 / 搜索页共享同一份偏好
+  PoemCardStyle _cardStyle = PoemCardStyleStore.fallback;
+
+  /// 题材标签映射，供 03 题材标签卡使用
+  Map<int, List<String>> _poemTags = const <int, List<String>>{};
+
   static const List<String> _segments = <String>['全部', '唐诗', '宋词'];
 
   @override
   void initState() {
     super.initState();
+    _loadStyle();
     _loadData();
+  }
+
+  /// 恢复上次选择的卡片样式（样式是跨页偏好，不随页面重置）
+  Future<void> _loadStyle() async {
+    final style = await PoemCardStyleStore.load();
+    if (mounted) setState(() => _cardStyle = style);
   }
 
   Future<void> _loadData() async {
@@ -43,10 +57,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final favs = _selectedCollection == null
         ? await DatabaseHelper.getFavoritePoems()
         : await DatabaseHelper.getFavoritePoemsByCollection(_selectedCollection!);
+    final tags = await DatabaseHelper.getPoemCategoryMap();
     if (mounted) {
       setState(() {
         _collections = collections;
         _favorites = favs;
+        _poemTags = tags;
         _loading = false;
       });
     }
@@ -202,6 +218,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
               ),
             ),
             const Spacer(),
+            IconButton(
+              tooltip: '卡片样式：${_cardStyle.label}',
+              icon: PoemIcon(PoemIcons.sort, size: 18, color: c.inkSoft),
+              onPressed: _showCardStyleSheet,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
+            const SizedBox(width: 10),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _showCollectionSheet,
@@ -264,44 +288,25 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   color: c.cinnabar,
                   borderRadius: BorderRadius.circular(ShiciSize.rMd),
                 ),
-                child: const Icon(Icons.delete, color: Colors.white, size: 20),
+                child: Icon(Icons.delete, color: c.onAccent, size: 20),
               ),
               onDismissed: (_) {
                 setState(() => _favorites.removeWhere((p) => p.id == poem.id));
                 _unfavorite(poem);
               },
-              child: ShiciCard(
-                height: 58,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                onTap: () => Navigator.of(context)
-                    .push(MaterialPageRoute(
-                        builder: (_) => PoemDetailPage(poemId: poem.id)))
-                    .then((_) => _loadData()),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onLongPress: () => _showFavItemMenu(poem),
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          poem.title,
-                          style: ShiciText.title.copyWith(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: c.ink,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        '${poem.dynastyName ?? ''} · ${poem.authorName ?? '佚名'}',
-                        style: ShiciText.caption
-                            .copyWith(fontSize: 11, color: c.inkFaint),
-                      ),
-                    ],
-                  ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: () => _showFavItemMenu(poem),
+                child: PoemListCard(
+                  poem: poem,
+                  style: _cardStyle,
+                  tags: poemTagsFor(poem, _poemTags),
+                  // 收藏夹里每一条都是已收藏，收藏态恒为真
+                  favorite: true,
+                  onTap: () => Navigator.of(context)
+                      .push(MaterialPageRoute(
+                          builder: (_) => PoemDetailPage(poemId: poem.id)))
+                      .then((_) => _loadData()),
                 ),
               ),
             ),
@@ -309,6 +314,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
         },
       ),
     );
+  }
+
+  /// 卡片样式切换：收藏夹条目多，紧凑列表最划算，这里只是把选择权交回用户
+  Future<void> _showCardStyleSheet() async {
+    final picked = await showPoemCardStylePicker(context, current: _cardStyle);
+    if (picked == null || picked == _cardStyle) return;
+    setState(() => _cardStyle = picked);
+    await PoemCardStyleStore.save(picked);
   }
 
   /// 收藏夹面板：切换 / 新建 / 长按重命名或删除

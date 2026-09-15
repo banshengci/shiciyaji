@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/poem_icon.dart';
 import '../../core/s2t_converter.dart';
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import '../widgets/empty_state.dart';
@@ -138,7 +138,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
         label: Text(label, style: const TextStyle(fontSize: 13)),
         selected: selected,
         onSelected: (_) => onTap(),
-        selectedColor: AppTheme.songLv.withOpacity(0.2),
+        selectedColor: ShiciColors.ofOr(theme.brightness).pine.withOpacity(0.2),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
@@ -146,6 +146,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
   }
 
   Widget _buildTile(ThemeData theme, ({Author author, int poemCount}) e) {
+    final c = ShiciColors.of(context);
     final name = e.author.name;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -158,13 +159,13 @@ class _AuthorsPageState extends State<AuthorsPage> {
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppTheme.zhuShaHong.withOpacity(0.85),
+            color: c.cinnabar.withOpacity(0.85),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
             name.isEmpty ? '？' : _t(String.fromCharCode(name.runes.first)),
-            style: const TextStyle(
-                color: Colors.white,
+            style: TextStyle(
+                color: c.onAccent,
                 fontSize: 18,
                 fontFamily: 'serif',
                 fontWeight: FontWeight.bold),
@@ -183,7 +184,7 @@ class _AuthorsPageState extends State<AuthorsPage> {
                 style: theme.textTheme.bodySmall),
         trailing: Text('${e.poemCount} 首',
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: AppTheme.songLv, fontWeight: FontWeight.bold)),
+                ?.copyWith(color: c.pine, fontWeight: FontWeight.bold)),
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
