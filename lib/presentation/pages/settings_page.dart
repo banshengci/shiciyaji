@@ -1205,7 +1205,8 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('版本：1.0.0', style: theme.textTheme.bodyMedium),
+            // 发版时与 pubspec.yaml 的 version 同步
+            Text('版本：1.1.2', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
             Text('一款纯粹、离线的古诗词学习与欣赏应用', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
