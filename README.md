@@ -1,3 +1,5 @@
+<img src="docs/screenshots/icon.png" width="80" align="right" alt="应用图标">
+
 # 诗词雅集 · shici_yaji
 
 一款**离线优先**的古诗词学习与欣赏应用，支持桌面（Windows / macOS / Linux）与移动（Android / iOS）端。
@@ -7,16 +9,25 @@
 
 ---
 
+## 界面预览
+
+![诗词雅集 · 八个核心页面](docs/screenshots/interface.png)
+
+<p align="center">
+  <img src="docs/screenshots/search-collection.png" width="460" alt="搜索与收藏">
+</p>
+
+---
+
 ## 关于内容质量（重要）
 
-预置的 70 首诗词配有**人工撰写**的译文、赏析与创作背景。
+全库 **1320 首**（预置 70 + 扩充 1250）的译文、赏析与创作背景，均已**逐首撰写 / 校订为真实内容**，
+不存在脚本套模板生成的占位文本。
 
-通过离线包扩充进来的 1250 首里，早期为补全篇目批量生成过「完整但偏说明性」的译文/赏析/背景
-（生成脚本见 `tools/auto_fill_content.py`）。这些文本读起来像赏析，其实是同一套句式反复套用。
-
-**应用会如实标注这件事**：详情页的每个内容区块都带可信度徽标（精校 / 说明性补充），
-统计页也会报出全库的占比。分级由 `tools/audit_content_quality.py` 离线算出，写入
-`assets/data/content_quality.json`；数据变动后跑一次 `--check` 即可发现遗漏。
+早期扩充包曾用脚本批量生成过「完整但偏说明性」的译文/赏析/背景（生成脚本见 `tools/auto_fill_content.py`），
+这些文本已在 2026-09 全量替换。应用保留了「内容可信度」机制以便长期把关：详情页的每个内容区块
+带可信度徽标（精校 / 说明性补充），分级由 `tools/audit_content_quality.py` 离线算出并写入
+`assets/data/content_quality.json`；数据变动后跑一次 `--check` 即可发现漂移。
 
 你也可以在详情页点「我来写」补上自己的理解 —— 它存在 `poem_content_overrides` 表里，
 与可再生的诗词数据隔离，升级离线包不会覆盖，备份也会带走。
