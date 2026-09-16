@@ -13,6 +13,7 @@ import '../widgets/poem_icon.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../core/s2t_converter.dart';
+import '../../core/ui_scale.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/achievement.dart';
 import '../widgets/calendar_heatmap.dart';
@@ -370,7 +371,11 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
   bool _autoBackup = true;
   int _autoBackupCount = 0;
   AchievementStats _stats = const AchievementStats();
+  /// 诗词正文字号（px）—— 只作用于阅读页正文
   double _fontSize = 18.0;
+
+  /// 全局字号（倍率）—— 作用于全站。真值在 [UiFontScale] 里，这里只是镜像一份用于选中态
+  double _uiScale = UiFontScale.normal;
   bool _traditionalChinese = false;
   bool _showPinyin = false;
   String _fontFamily = 'serif';
@@ -402,6 +407,8 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
           _ => ThemeMode.system,
         };
         _fontSize = prefs.getDouble('font_size') ?? 18.0;
+        // 全局字号以 UiFontScale 为准（main 里已读过），避免两处各读一次偏好而不同步
+        _uiScale = UiFontScale.value;
         _traditionalChinese = prefs.getBool('traditional_chinese') ?? false;
         _showPinyin = prefs.getBool('show_pinyin') ?? false;
         _fontFamily = prefs.getString('font_family') ?? 'serif';
@@ -557,24 +564,77 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading:
-                      Icon(Icons.text_fields, color: theme.colorScheme.primary),
-                  title: const Text('字体大小'),
+                  leading: Icon(Icons.format_size,
+                      color: theme.colorScheme.primary),
+                  title: const Text('全局字号'),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: SegmentedButton<double>(
-                      segments: const [
-                        ButtonSegment(value: 16.0, label: Text('小')),
-                        ButtonSegment(value: 18.0, label: Text('中')),
-                        ButtonSegment(value: 22.0, label: Text('大')),
-                        ButtonSegment(value: 26.0, label: Text('特大')),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 横向可滚动：四档在窄屏 + 特大字号下可能顶到边，
+                        // 宁可让用户划一下，也不要 RenderFlex 溢出条纹。
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SegmentedButton<double>(
+                            showSelectedIcon: false,
+                            segments: [
+                              for (final v in UiFontScale.levels)
+                                ButtonSegment(
+                                  value: v,
+                                  label: Text(UiFontScale.labelOf(v)),
+                                ),
+                            ],
+                            selected: {_uiScale},
+                            onSelectionChanged: (set) {
+                              final v = set.first;
+                              setState(() => _uiScale = v);
+                              // 交给 UiFontScale 落盘并广播，根组件随即重建整棵树
+                              UiFontScale.save(v);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text('整个应用的文字大小（导航、卡片、按钮、诗词正文一起变）',
+                            style: theme.textTheme.bodySmall),
                       ],
-                      selected: {_fontSize},
-                      onSelectionChanged: (set) {
-                        final size = set.first;
-                        setState(() => _fontSize = size);
-                        _saveSetting('font_size', size);
-                      },
+                    ),
+                  ),
+                  trailing: Text(UiFontScale.percentOf(_uiScale),
+                      style: theme.textTheme.bodySmall),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading:
+                      Icon(Icons.text_fields, color: theme.colorScheme.primary),
+                  title: const Text('诗词正文字号'),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SegmentedButton<double>(
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(value: 16.0, label: Text('小')),
+                              ButtonSegment(value: 18.0, label: Text('中')),
+                              ButtonSegment(value: 22.0, label: Text('大')),
+                              ButtonSegment(value: 26.0, label: Text('特大')),
+                            ],
+                            selected: {_fontSize},
+                            onSelectionChanged: (set) {
+                              final size = set.first;
+                              setState(() => _fontSize = size);
+                              _saveSetting('font_size', size);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text('只微调阅读页的诗词正文，实际字号 = 本档 × 上方全局字号',
+                            style: theme.textTheme.bodySmall),
+                      ],
                     ),
                   ),
                   trailing: Text('${_fontSize.round()}px',
@@ -1206,7 +1266,7 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 发版时与 pubspec.yaml 的 version 同步
-            Text('版本：1.1.2', style: theme.textTheme.bodyMedium),
+            Text('版本：1.2.0', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
             Text('一款纯粹、离线的古诗词学习与欣赏应用', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../core/achievement_service.dart';
+import '../../core/content_quality.dart';
 import '../../data/database/database_helper.dart';
 import '../widgets/shici_kit.dart';
 
@@ -45,6 +46,9 @@ class _SplashPageState extends State<SplashPage>
     } catch (_) {
       // 忽略：交给主壳的错误处理
     }
+    // 内容可信度分级表（36KB JSON）：在首屏停留期间读完，
+    // 详情页首次打开就能直接标注，不会先显示再补一个徽标。
+    await ContentQuality.load();
     if (!mounted) return;
     // 建立成就解锁基线：把当前已满足的成就直接标记为已解锁（不弹横幅），
     // 后续行为触发 sync() 时才对「新解锁」弹横幅。

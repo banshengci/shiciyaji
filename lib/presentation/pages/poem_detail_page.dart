@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show TapGestureRecognizer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -5,12 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/theme.dart';
 import '../../core/design_tokens.dart';
+import '../../core/content_quality.dart';
 import '../../core/tts_service.dart';
 import '../../core/s2t_converter.dart';
 import '../../core/achievement_service.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart' show Poem, Author, StudyNote;
 import '../../utils/pinyin_helper.dart';
+import '../../utils/verse_splitter.dart';
 import '../widgets/poem_icon.dart';
 import '../widgets/poem_parallel_card.dart';
 import '../widgets/note_dialogs.dart'
@@ -19,6 +22,7 @@ import 'author_detail_page.dart';
 import 'create_plan_page.dart';
 import 'recall_quiz_page.dart';
 import 'poem_card_page.dart';
+import 'copy_practice_page.dart';
 
 /// 诗词详情页：原文/注释/译文/赏析，沉浸式阅读
 class PoemDetailPage extends StatefulWidget {
@@ -55,10 +59,42 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
       ? S2TConverter.toTraditional(text)
       : S2TConverter.toSimplified(text);
 
+  /// 用户对译文/赏析/背景的本地补写，键为 [ContentField.name]。
+  ///
+  /// 与 `poems` 表里的内容分开存：后者是 assets 播种 + 离线包导入的可再生数据，
+  /// 升级时会整块重建；用户写的东西必须活过那些迁移。
+  Map<String, String> _overrides = const {};
+
+  /// 展示用文本：本地补写优先，其次包内内容。
+  ///
+  /// 返回 null 表示这一项确实没有内容（既不显示区块，也不给徽标）。
+  String? _contentOf(ContentField field, String? builtIn) {
+    final own = _overrides[field.name];
+    if (own != null && own.trim().isNotEmpty) return own;
+    return builtIn;
+  }
+
+  /// 这一项的等级：本地补写过就算「自己的」，否则交给分级表。
+  ContentLevel _levelOf(ContentField field, String? builtIn) {
+    if (_overrides[field.name]?.trim().isNotEmpty ?? false) {
+      return ContentLevel.curated;
+    }
+    return ContentQuality.levelOf(widget.poemId, field);
+  }
+
   // TTS
   final _tts = TtsService.instance;
   bool _ttsPlaying = false;
   double _ttsRate = 1.0;
+
+  // 逐句跟读
+  /// 当前正在念的句（由 [splitVerses] 断出来的片段）
+  List<String> _verses = const [];
+  int _verseIndex = 0;
+  bool _following = false;
+
+  /// 单句循环：适合「这一句读不顺，反复跟读」
+  bool _loopVerse = false;
 
   // 导航
   int? _prevId;
@@ -123,6 +159,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
     if (poem != null) {
       await DatabaseHelper.addReadingHistory(poem.id);
     }
+    // 内容分级表与本地补写：都在首帧前读完，否则会先渲染没有徽标的版本再跳变
+    await ContentQuality.load();
+    final overrides = await DatabaseHelper.getPoemOverrides(widget.poemId);
     if (mounted) {
       setState(() {
         _poem = poem;
@@ -131,10 +170,319 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
         _prevId = prevId;
         _nextId = nextId;
         _notes = notes;
+        _overrides = overrides;
         _loading = false;
       });
     }
   }
+
+  /// 开始逐句跟读（[from] 为起始句下标）。
+  ///
+  /// 每次调用都会先停掉上一段朗读：切句、点「再念一遍」都走这里，
+  /// 不必再单独实现一套「重读某句」的路径。
+  Future<void> _startFollow({int from = 0}) async {
+    final poem = _poem;
+    if (poem == null) return;
+    final verses = splitVerses(poem.content);
+    if (verses.isEmpty) return;
+
+    setState(() {
+      _verses = verses;
+      _verseIndex = from.clamp(0, verses.length - 1);
+      _following = true;
+      _ttsPlaying = false;
+    });
+
+    await _tts.speakVerses(
+      verses,
+      from: _verseIndex,
+      onVerse: (i) {
+        if (mounted) setState(() => _verseIndex = i);
+      },
+      loopAt: (i) => _loopVerse && i == _verseIndex,
+      onFinished: () {
+        if (mounted) setState(() => _following = false);
+      },
+    );
+  }
+
+  Future<void> _stopFollow() async {
+    await _tts.stop();
+    if (mounted) setState(() => _following = false);
+  }
+
+  /// 上一句 / 下一句：停下当前句，从目标句重新开始
+  void _jumpVerse(int delta) {
+    if (_verses.isEmpty) return;
+    final next =
+        (_verseIndex + delta).clamp(0, _verses.length - 1);
+    _startFollow(from: next);
+  }
+
+  /// 跟读中高亮：正文的哪一行包含当前句
+  bool _isCurrentVerseLine(String line) {
+    if (!_following || _verseIndex >= _verses.length) return false;
+    return verseMatchesLine(_verses[_verseIndex], line);
+  }
+
+  // ── 点字查字 ──────────────────────────────────────────────────────
+  //
+  // 每个汉字一个 TapGestureRecognizer，按**字符**缓存复用（同一首诗里「月」出现
+  // 十次也只建一个）。晚于 build 创建、在 dispose 统一释放 —— 在 build 里现建现用
+  // 会每次重建都漏一批 recognizer。
+  final Map<String, TapGestureRecognizer> _charRecognizers = {};
+
+  TapGestureRecognizer _recognizerFor(String ch) {
+    return _charRecognizers.putIfAbsent(ch, () {
+      final recognizer = TapGestureRecognizer();
+      recognizer.onTap = () => _lookupChar(ch);
+      return recognizer;
+    });
+  }
+
+  /// 点字查字：拼音 + 该字在别处的用例。
+  ///
+  /// 只给拼音与用例、**不给释义** —— 我们手上没有可离线分发的词典数据，
+  /// 编不出来就不假装有（见 README「关于内容质量」）。
+  Future<void> _lookupChar(String ch) async {
+    final hits = await DatabaseHelper.searchVerses(ch, limit: 8);
+    final poemCount = await DatabaseHelper.countPoemsContaining(ch);
+    if (!mounted) return;
+
+    final pinyin = PinyinHelper.pinyinOf(ch);
+    final c = ShiciColors.of(context);
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: c.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(ShiciSize.rLg)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text(
+                    ch,
+                    style: TextStyle(
+                      fontSize: 40,
+                      height: 1.1,
+                      fontFamily: _fontFamily,
+                      color: c.ink,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      pinyin.isEmpty ? '（无读音）' : pinyin,
+                      style: ShiciText.numeral.copyWith(
+                        fontSize: 16,
+                        color: c.cinnabar,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      '$poemCount 首诗用到过',
+                      style: ShiciText.caption
+                          .copyWith(fontSize: 11, color: c.inkSoft),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (hits.isEmpty)
+                Text('没有找到用到这个字的诗句。',
+                    style: ShiciText.caption.copyWith(color: c.inkSoft))
+              else ...[
+                Text('用例',
+                    style: ShiciText.heading
+                        .copyWith(fontSize: 13, color: c.ink)),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: hits.length,
+                    itemBuilder: (_, i) {
+                      final hit = hits[i];
+                      return InkWell(
+                        onTap: () {
+                          Navigator.of(sheetCtx).pop();
+                          Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) =>
+                                  PoemDetailPage(poemId: hit.poemId)));
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                hit.verse,
+                                style: ShiciText.body.copyWith(
+                                    fontSize: 15, height: 1.7, color: c.ink),
+                              ),
+                              Text(
+                                '——《${hit.title}》'
+                                '${(hit.authorName ?? '').isEmpty ? '' : ' · ${hit.authorName}'}',
+                                style: ShiciText.caption.copyWith(
+                                    fontSize: 11, color: c.inkSoft),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              const SizedBox(height: 6),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 正文里的汉字可点（标点、空白保持不可点：免得点个逗号弹出空卡）
+  Widget _buildTappableBody(Poem poem, ThemeData theme) {
+    final base = TextStyle(
+      fontSize: _fontSize,
+      height: 2.0,
+      fontFamily: _fontFamily,
+      color: !_immersive ? theme.colorScheme.onSurface : Colors.white, // keep: fixed-block
+    );
+    return Column(
+      children: <Widget>[
+        for (final line in _t(poem.content).split('\n'))
+          if (line.trim().isEmpty)
+            const SizedBox(height: 6)
+          else
+            Text.rich(
+              TextSpan(style: base, children: _charSpans(line)),
+              textAlign: TextAlign.center,
+            ),
+      ],
+    );
+  }
+
+  List<InlineSpan> _charSpans(String line) {
+    final spans = <InlineSpan>[];
+    final buffer = StringBuffer();
+
+    void flush() {
+      if (buffer.isEmpty) return;
+      spans.add(TextSpan(text: buffer.toString()));
+      buffer.clear();
+    }
+
+    for (final rune in line.runes) {
+      final ch = String.fromCharCode(rune);
+      if (isChineseChar(ch)) {
+        flush();
+        spans.add(TextSpan(text: ch, recognizer: _recognizerFor(ch)));
+      } else {
+        buffer.write(ch);
+      }
+    }
+    flush();
+    return spans;
+  }
+
+  /// 跟读时的正文：按行渲染，当前句所在的行转朱砂加粗。
+  ///
+  /// 只在跟读时改成分行渲染，不常开：平时整段 `Text` 的排版更紧凑，
+  /// 折行位置交给字体决定；拆成逐行会让长句的换行点变化，属于无谓的视觉改动。
+  Widget _buildFollowBody(Poem poem, ThemeData theme) {
+    final c = ShiciColors.of(context);
+    final base = TextStyle(
+      fontSize: _fontSize,
+      height: 2.0,
+      fontFamily: _fontFamily,
+      color: !_immersive ? theme.colorScheme.onSurface : Colors.white, // keep: fixed-block
+    );
+    return Column(
+      children: <Widget>[
+        for (final line in _t(poem.content).split('\n'))
+          if (line.trim().isEmpty)
+            const SizedBox(height: 6)
+          else
+            Text(
+              line,
+              textAlign: TextAlign.center,
+              style: _isCurrentVerseLine(line)
+                  ? base.copyWith(
+                      color: c.cinnabar,
+                      fontWeight: FontWeight.w600,
+                    )
+                  : base,
+            ),
+      ],
+    );
+  }
+
+  /// 打开「补写这一段」编辑器。
+  ///
+  /// 存空字符串等于删除覆盖（DAO 里就这么实现的），所以「清空后保存」
+  /// 会自然回到包内原文，不需要额外交代用户。
+  Future<void> _editOverride(ContentField field, String? current) async {
+    final controller = TextEditingController(text: current ?? '');
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('补写${_fieldLabel(field)}'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: controller,
+            maxLines: 8,
+            minLines: 4,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: '写下你自己的理解。清空内容保存即可恢复包内原文。',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (saved == null) return;
+
+    await DatabaseHelper.savePoemOverride(
+        widget.poemId, field.name, saved);
+    final overrides = await DatabaseHelper.getPoemOverrides(widget.poemId);
+    if (!mounted) return;
+    setState(() => _overrides = overrides);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(saved.trim().isEmpty ? '已恢复包内原文' : '已保存你的补写')),
+    );
+  }
+
+  static String _fieldLabel(ContentField field) => switch (field) {
+        ContentField.translation => '译文',
+        ContentField.appreciation => '赏析',
+        ContentField.background => '创作背景',
+      };
 
   /// 打开诗人详情页（顺着作者看他的其他作品）
   void _openAuthor(Poem poem) {
@@ -169,6 +517,13 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
     }
 
     final poem = _poem!;
+
+    // 三个内容区块的最终文本：本地补写优先，其次包内原文
+    final translation =
+        _contentOf(ContentField.translation, poem.translation);
+    final appreciation =
+        _contentOf(ContentField.appreciation, poem.appreciation);
+    final background = _contentOf(ContentField.background, poem.background);
 
     return Shortcuts(
       shortcuts: const <ShortcutActivator, Intent>{
@@ -234,6 +589,16 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                         ),
                         tooltip: '朗读',
                       ),
+                      // 逐句跟读：念一句高亮一句，可单句循环
+                      IconButton(
+                        onPressed: () =>
+                            _following ? _stopFollow() : _startFollow(),
+                        icon: PoemIcon(
+                          PoemIcons.recite,
+                          color: _following ? pal.cinnabar : null,
+                        ),
+                        tooltip: _following ? '结束跟读' : '逐句跟读',
+                      ),
                       IconButton(
                         onPressed: () => _toggleFavorite(),
                         icon: PoemIcon(
@@ -241,6 +606,19 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                           color: _isFavorite ? pal.cinnabar : null,
                         ),
                         tooltip: _isFavorite ? '取消收藏' : '收藏',
+                      ),
+                      // 抄写 / 练字：把这首诗铺成米字格字帖
+                      IconButton(
+                        onPressed: _poem == null
+                            ? null
+                            : () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        CopyPracticePage(poem: _poem!),
+                                  ),
+                                ),
+                        icon: const Icon(Icons.brush, size: 22),
+                        tooltip: '抄写',
                       ),
                     ],
                   ),
@@ -310,39 +688,59 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                       if (_parallel) ...[
                         GestureDetector(
                           onLongPress: _showPoemActions,
+                          // 换一份带覆盖内容的 Poem：对照卡是自己拆译文/赏析的，
+                          // 不这么做的话「补写过的内容」在对照读法里会看不到
                           child: PoemParallelCard(
-                            poem: poem,
+                            poem: poem.copyWithContent(
+                              translation: translation,
+                              appreciation: appreciation,
+                              background: background,
+                            ),
                             transform: _t,
                             showHeader: false,
                           ),
                         ),
                       ] else ...[
-                        // 诗体：居中、行距 2.0。点击进入沉浸阅读
-                        // （画布顶栏没有沉浸入口，用「点正文」承载）
+                        // 诗体：居中、行距 2.0。
+                        // 手势分工：轻点**汉字**查读音与用例（见 _lookupChar），
+                        // 长按出诗词操作，进沉浸走正文下方那个明确按钮 ——
+                        // 原先「点正文进沉浸」会与点字冲突，二者只能留一个明确的。
                         GestureDetector(
-                          onTap: _immersive
-                              ? null
-                              : () => setState(() => _immersive = true),
                           onLongPress: _immersive ? null : _showPoemActions,
                           child: Center(
                             child: _showPinyin
                                 ? _buildPinyinText(_t(poem.content), theme)
-                                : Text(
-                                    _t(poem.content),
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: _fontSize,
-                                      height: 2.0,
-                                      fontFamily: _fontFamily,
-                                      color: !_immersive
-                                          ? theme.colorScheme.onSurface
-                                          : Colors.white, // keep: fixed-block
-                                    ),
-                                  ),
+                                : _following
+                                    ? _buildFollowBody(poem, theme)
+                                    : _buildTappableBody(poem, theme),
                           ),
                         ),
                         const SizedBox(height: 18),
                         _buildDivider(theme),
+                        // 正文下方的操作提示：轻点查字 + 明确的沉浸入口。
+                        // 沉浸入口摆在正文附近而不是顶栏 —— 画布把顶栏留给「返回/朗读/收藏」，
+                        // 而这里离正文更近，反而更好找。
+                        if (!_immersive && !_parallel) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  '轻点正文里的字，可查读音与用例',
+                                  style: ShiciText.caption.copyWith(
+                                      fontSize: 11, color: theme.colorScheme.outline),
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: () =>
+                                    setState(() => _immersive = true),
+                                icon: const PoemIcon(PoemIcons.immersive, size: 16),
+                                label: const Text('沉浸阅读',
+                                    style: TextStyle(fontSize: 12)),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 18),
                         // 注释
                         if (_showNotes && poem.notes.isNotEmpty) ...[
@@ -385,7 +783,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                           ),
                         ],
                         // 译文
-                        if (poem.translation != null) ...[
+                        if (translation != null) ...[
                           const SizedBox(height: 24),
                           _buildCollapsibleSection(
                             theme,
@@ -394,20 +792,34 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                             _showTranslation,
                             () => setState(
                                 () => _showTranslation = !_showTranslation),
-                            Text(
-                              _t(poem.translation!),
-                              style: TextStyle(
-                                  fontSize: _fontSize - 2,
-                                  height: 1.8,
-                                  color: _immersive
-                                      ? Colors.white70
-                                      : theme.colorScheme.onSurface
-                                          .withOpacity(0.85)),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _display(translation,
+                                      ContentField.translation),
+                                  style: TextStyle(
+                                      fontSize: _fontSize - 2,
+                                      height: 1.8,
+                                      color: _immersive
+                                          ? Colors.white70
+                                          : theme.colorScheme.onSurface
+                                              .withOpacity(0.85)),
+                                ),
+                                if (!_immersive)
+                                  _overrideRow(theme,
+                                      ContentField.translation,
+                                      poem.translation),
+                              ],
                             ),
+                            badge: _immersive
+                                ? null
+                                : _levelBadge(theme, ContentField.translation,
+                                    poem.translation),
                           ),
                         ],
                         // 赏析
-                        if (poem.appreciation != null) ...[
+                        if (appreciation != null) ...[
                           const SizedBox(height: 24),
                           _buildCollapsibleSection(
                             theme,
@@ -416,21 +828,35 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                             _showAppreciation,
                             () => setState(
                                 () => _showAppreciation = !_showAppreciation),
-                            Text(
-                              _t(poem.appreciation!),
-                              style: TextStyle(
-                                  fontSize: _fontSize - 2,
-                                  height: 1.8,
-                                  color: _immersive
-                                      ? Colors.white70
-                                      : theme.colorScheme.onSurface
-                                          .withOpacity(0.85)),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _display(appreciation,
+                                      ContentField.appreciation),
+                                  style: TextStyle(
+                                      fontSize: _fontSize - 2,
+                                      height: 1.8,
+                                      color: _immersive
+                                          ? Colors.white70
+                                          : theme.colorScheme.onSurface
+                                              .withOpacity(0.85)),
+                                ),
+                                if (!_immersive)
+                                  _overrideRow(theme,
+                                      ContentField.appreciation,
+                                      poem.appreciation),
+                              ],
                             ),
+                            badge: _immersive
+                                ? null
+                                : _levelBadge(theme, ContentField.appreciation,
+                                    poem.appreciation),
                           ),
                         ],
                   ],
                       // 创作背景
-                      if (poem.background != null) ...[
+                      if (background != null) ...[
                         const SizedBox(height: 24),
                         _buildCollapsibleSection(
                           theme,
@@ -439,16 +865,28 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                           _showBackground,
                           () => setState(
                               () => _showBackground = !_showBackground),
-                          Text(
-                            _t(poem.background!),
-                            style: TextStyle(
-                                fontSize: _fontSize - 2,
-                                height: 1.8,
-                                color: _immersive
-                                    ? Colors.white70
-                                    : theme.colorScheme.onSurface
-                                        .withOpacity(0.85)),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _display(background, ContentField.background),
+                                style: TextStyle(
+                                    fontSize: _fontSize - 2,
+                                    height: 1.8,
+                                    color: _immersive
+                                        ? Colors.white70
+                                        : theme.colorScheme.onSurface
+                                            .withOpacity(0.85)),
+                              ),
+                              if (!_immersive)
+                                _overrideRow(theme, ContentField.background,
+                                    poem.background),
+                            ],
                           ),
+                          badge: _immersive
+                              ? null
+                              : _levelBadge(theme, ContentField.background,
+                                  poem.background),
                         ),
                       ],
                       // 作者生平
@@ -501,8 +939,8 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                       const SizedBox(height: 40),
                     ],
                   ),
-                  // TTS 控制条
-                  if (_ttsPlaying && !_immersive)
+                  // TTS 控制条（整段朗读 / 逐句跟读共用）
+                  if ((_ttsPlaying || _following) && !_immersive)
                     Positioned(
                       bottom: 0,
                       left: 0,
@@ -696,7 +1134,8 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   }
 
   Widget _buildCollapsibleSection(ThemeData theme, String title, Object icon,
-      bool expanded, VoidCallback onToggle, Widget content) {
+      bool expanded, VoidCallback onToggle, Widget content,
+      {Widget? badge}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -705,6 +1144,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
           child: Row(
             children: [
               _sectionLabel(title),
+              // 徽标放在标题行而不是正文里：折叠时也要看得见 ——
+              // 「这一段不是专门写的赏析」这件事，用户有权在点开之前就知道
+              if (badge != null) ...[const SizedBox(width: 8), badge],
               const Spacer(),
               Icon(expanded ? Icons.expand_less : Icons.expand_more,
                   size: 18,
@@ -717,6 +1159,79 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
       ],
     );
   }
+
+  /// 内容可信度徽标：精校 / 说明性补充 / 我补写的。
+  ///
+  /// 颜色全部取自语义令牌，深色模式下会自动换成适合墨底的那一档。
+  Widget _levelBadge(ThemeData theme, ContentField field, String? builtIn) {
+    final c = ShiciColors.of(context);
+    final own = _isOwnOverride(field);
+    final level = _levelOf(field, builtIn);
+    final color = switch (level) {
+      // 「我的」与「精校」都是可信内容，同色；区分靠文案
+      ContentLevel.curated => c.pine,
+      ContentLevel.generated => c.ochre,
+      ContentLevel.missing => c.inkSoft,
+    };
+    final label = own ? '我补写的' : ContentQuality.labelOf(level);
+
+    return Tooltip(
+      message: own
+          ? '这段是你自己补写的，升级离线包不会覆盖它。'
+          : ContentQuality.hintOf(level),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(ShiciSize.rSm),
+          border: Border.all(color: color.withOpacity(0.35), width: 0.5),
+        ),
+        child: Text(
+          label,
+          style: ShiciText.tag.copyWith(
+            fontSize: 10,
+            color: color,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 区块底部：一句来源说明 + 「我来写 / 修改」入口。
+  Widget _overrideRow(ThemeData theme, ContentField field, String? builtIn) {
+    final own = _isOwnOverride(field);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              own
+                  ? '来自你的补写'
+                  : ContentQuality.hintOf(
+                      _levelOf(field, builtIn)),
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => _editOverride(
+                field, own ? _overrides[field.name] : builtIn),
+            icon: Icon(own ? Icons.edit_outlined : Icons.add, size: 15),
+            label: Text(own ? '修改' : '我来写',
+                style: const TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isOwnOverride(ContentField field) =>
+      _overrides[field.name]?.trim().isNotEmpty ?? false;
+
+  /// 展示用文本：自己补写的内容原样显示（不做繁简转换，那是用户的字）
+  String _display(String raw, ContentField field) =>
+      _isOwnOverride(field) ? raw : _t(raw);
 
   /// 底部操作条：一个主按钮 + 两个圆形次按钮（对齐画布）
   Widget _buildActionBar(ThemeData theme) {
@@ -853,42 +1368,101 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
               offset: const Offset(0, -2))
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          PoemIcon(PoemIcons.tts, color: c.cinnabar, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text('正在朗读...', style: theme.textTheme.bodySmall),
-          ),
-          // 倍速选择
-          PopupMenuButton<double>(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
+          // 当前句：跟读时把它放大摆在眼前，比在正文里找一个高亮更省事，
+          // 长词一屏放不下时也不用滚动去追
+          if (_following && _verseIndex < _verses.length) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                _t(_verses[_verseIndex]),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: _fontSize,
+                  height: 1.6,
+                  fontFamily: _fontFamily,
+                  color: c.cinnabar,
+                ),
               ),
-              child: Text('${_ttsRate}x',
-                  style: TextStyle(
-                      fontSize: 12, color: theme.colorScheme.onSurface)),
             ),
-            onSelected: (r) {
-              setState(() => _ttsRate = r);
-              _tts.setRate(r);
-            },
-            itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
-                .map((r) => PopupMenuItem(value: r, child: Text('${r}x')))
-                .toList(),
-          ),
-          IconButton(
-            icon: Icon(_ttsPlaying ? Icons.pause : Icons.play_arrow),
-            onPressed: _toggleTts,
-            tooltip: _ttsPlaying ? '暂停朗读' : '开始朗读',
-          ),
-          IconButton(
-            icon: const Icon(Icons.stop),
-            onPressed: _stopTts,
-            tooltip: '停止朗读',
+          ],
+          Row(
+            children: [
+              PoemIcon(_following ? PoemIcons.recite : PoemIcons.tts,
+                  color: c.cinnabar, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _following
+                      ? '跟读 ${_verseIndex + 1}/${_verses.length}'
+                          '${_loopVerse ? ' · 单句循环' : ''}'
+                      : '正在朗读...',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              if (_following) ...[
+                IconButton(
+                  icon: const Icon(Icons.skip_previous),
+                  onPressed:
+                      _verseIndex == 0 ? null : () => _jumpVerse(-1),
+                  tooltip: '上一句',
+                ),
+                IconButton(
+                  icon: Icon(_loopVerse
+                      ? Icons.repeat_on_outlined
+                      : Icons.repeat),
+                  color: _loopVerse ? c.cinnabar : null,
+                  onPressed: () =>
+                      setState(() => _loopVerse = !_loopVerse),
+                  tooltip: _loopVerse ? '关闭单句循环' : '单句循环',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.skip_next),
+                  onPressed: _verseIndex >= _verses.length - 1
+                      ? null
+                      : () => _jumpVerse(1),
+                  tooltip: '下一句',
+                ),
+              ],
+              // 倍速选择
+              PopupMenuButton<double>(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text('${_ttsRate}x',
+                      style: TextStyle(
+                          fontSize: 12, color: theme.colorScheme.onSurface)),
+                ),
+                onSelected: (r) {
+                  setState(() => _ttsRate = r);
+                  _tts.setRate(r);
+                  // 跟读中调语速：把当前句重新开始，新语速立刻生效
+                  if (_following) _startFollow(from: _verseIndex);
+                },
+                itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+                    .map((r) => PopupMenuItem(value: r, child: Text('${r}x')))
+                    .toList(),
+              ),
+              if (!_following)
+                IconButton(
+                  icon: Icon(_ttsPlaying ? Icons.pause : Icons.play_arrow),
+                  onPressed: _toggleTts,
+                  tooltip: _ttsPlaying ? '暂停朗读' : '开始朗读',
+                ),
+              IconButton(
+                icon: const Icon(Icons.stop),
+                onPressed: _following ? _stopFollow : _stopTts,
+                tooltip: _following ? '结束跟读' : '停止朗读',
+              ),
+            ],
           ),
         ],
       ),
@@ -917,6 +1491,8 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
       await _tts.stop();
       setState(() => _ttsPlaying = false);
     } else {
+      // 整段朗读与逐句跟读互斥：不先停跟读，两段声音会叠在一起
+      if (_following) setState(() => _following = false);
       await _tts.setRate(_ttsRate);
       await _tts.speak('${_poem!.title}。${_poem!.content}');
       setState(() => _ttsPlaying = true);
@@ -925,7 +1501,10 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
 
   Future<void> _stopTts() async {
     await _tts.stop();
-    setState(() => _ttsPlaying = false);
+    setState(() {
+      _ttsPlaying = false;
+      _following = false;
+    });
   }
 
   Future<void> _toggleFavorite() async {
@@ -1219,6 +1798,10 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   @override
   void dispose() {
     _tts.stop();
+    for (final recognizer in _charRecognizers.values) {
+      recognizer.dispose();
+    }
+    _charRecognizers.clear();
     _noteController.dispose();
     _noteFocusNode.dispose();
     super.dispose();

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/design_tokens.dart';
 import '../../core/s2t_converter.dart';
+import '../../core/ui_scale.dart';
 import '../../data/models/models.dart';
 import 'shici_kit.dart';
 
@@ -270,6 +271,13 @@ class PoemShareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 字号与配色同理：导出的是 PNG，跟随「全局字号」会让同一首诗在「小号」和
+    // 「特大号」用户手里导出两张版式不同的图 —— 那不是自适应，是不可复现。
+    // 包一层 [FixedScaleCanvas]，卡片在应用内预览与导出都恒定按 1.0 排版。
+    return FixedScaleCanvas(child: _buildCard());
+  }
+
+  Widget _buildCard() {
     switch (style) {
       case PoemShareStyle.quote:
         return _QuoteCard(poem: poem, width: width);

@@ -126,6 +126,35 @@ class Poem {
     this.dynastyName,
   });
 
+  /// 复制一份，只替换译文/赏析/背景。
+  ///
+  /// 用途单一但必要：用户本地补写的内容存在 `poem_content_overrides` 表里，
+  /// 不进 `poems`。而「对照读法」的卡片（[PoemParallelCard]）是直接吃 [Poem]
+  /// 并按联拆译文的 —— 与其给卡片加一堆覆盖参数，不如在调用处换一份 Poem，
+  /// 这样两种读法（通读 / 对照）看到的内容必然一致。
+  Poem copyWithContent({
+    String? translation,
+    String? appreciation,
+    String? background,
+  }) {
+    return Poem(
+      id: id,
+      title: title,
+      content: content,
+      authorId: authorId,
+      dynastyId: dynastyId,
+      type: type,
+      notes: notes,
+      translation: translation ?? this.translation,
+      appreciation: appreciation ?? this.appreciation,
+      background: background ?? this.background,
+      source: source,
+      sortOrder: sortOrder,
+      authorName: authorName,
+      dynastyName: dynastyName,
+    );
+  }
+
   factory Poem.fromMap(Map<String, dynamic> m) {
     final notesRaw = m['notes'] as String?;
     List<Note> notes = [];
@@ -184,12 +213,21 @@ class StudyPlan {
   final List<int> poemIds;
   final String? createdAt;
 
+  /// 每日定量（首）。为 null 表示「不限量」——老计划与新迁移一律落在这个分支，
+  /// 排期器（[PlanScheduler]）据此决定是否给出「今日 N 首」。
+  final int? dailyTarget;
+
+  /// 排期起始日（`YYYY-MM-DD`）。为 null 时以今天为起点。
+  final String? startDate;
+
   StudyPlan({
     required this.id,
     required this.name,
     this.description,
     this.poemIds = const [],
     this.createdAt,
+    this.dailyTarget,
+    this.startDate,
   });
 
   factory StudyPlan.fromMap(Map<String, dynamic> m) {
@@ -205,6 +243,7 @@ class StudyPlan {
         ids = cleaned.split(',').where((e) => e.isNotEmpty).map((e) => int.tryParse(e) ?? 0).where((e) => e > 0).toList();
       }
     }
+    final target = m['daily_target'];
     return StudyPlan(
       id: m['id'] as int,
       // 计划名和描述是用户自己输入的，不跟随繁简设置，原样保留
@@ -212,8 +251,28 @@ class StudyPlan {
       description: m['description'] as String?,
       poemIds: ids,
       createdAt: m['created_at'] as String?,
+      dailyTarget: target is int && target > 0 ? target : null,
+      startDate: m['start_date'] as String?,
     );
   }
+}
+
+/// 一条「诗句命中」——「按字/按句查诗」的结果单位。
+///
+/// 刻意是**一句一条**而不是一首一条：用户输入一个字时，想看的是这个字落在哪句诗里，
+/// 把整首诗丢出来等于让他自己再找一遍。
+class VerseHit {
+  final int poemId;
+  final String title;
+  final String? authorName;
+  final String verse;
+
+  const VerseHit({
+    required this.poemId,
+    required this.title,
+    this.authorName,
+    required this.verse,
+  });
 }
 
 class StudyRecord {

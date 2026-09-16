@@ -1,0 +1,44 @@
+{
+  "counts": {
+    "appreciation": {
+      "curated": 1320,
+      "generated": 0,
+      "missing": 0
+    },
+    "background": {
+      "curated": 1320,
+      "generated": 0,
+      "missing": 0
+    },
+    "total": 1320,
+    "translation": {
+      "curated": 1320,
+      "generated": 0,
+      "missing": 0
+    }
+  },
+  "criteria": {
+    "appreciation": "命中模板句特征或短于 30 字",
+    "background": "命中模板句特征、短于 24 字，或等于作者+诗名拼接",
+    "template_phrases": [
+      "值得细读的一首",
+      "章法铺叙有序",
+      "全篇围绕题意展开",
+      "情景相生",
+      "句式自由，气势流畅"
+    ],
+    "translation": "繁简归一去标点后，译文是本诗或另一首诗原文的子串"
+  },
+  "data_mtime": 1789544451,
+  "generated": {
+    "appreciation": [],
+    "background": [],
+    "translation": []
+  },
+  "missing": {
+    "appreciation": [],
+    "background": [],
+    "translation": []
+  },
+  "version": 2
+}

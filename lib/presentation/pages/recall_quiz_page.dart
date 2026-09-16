@@ -6,6 +6,7 @@ import '../../data/models/models.dart';
 import '../widgets/poem_icon.dart';
 import '../widgets/empty_state.dart';
 import 'library_page.dart';
+import 'quiz_page.dart';
 
 /// 背诵自测
 ///
@@ -99,6 +100,26 @@ class _RecallQuizPageState extends State<RecallQuizPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title, style: const TextStyle(fontFamily: 'serif')),
+        actions: [
+          // 「换成客观题」：范围不变，只是把「自评」换成「有唯一答案的判卷」。
+          // 放在这里就等于给所有「背诵自测」的入口（详情页、学习计划…）
+          // 一并加上了客观题的入口，不用逐处改。
+          IconButton(
+            tooltip: '换成客观题',
+            icon: const Icon(Icons.quiz_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => QuizPage(
+                  title: widget.title.replaceFirst('背诵', '客观题'),
+                  poemIds: widget.poemIds,
+                  count: widget.poemIds?.isNotEmpty == true
+                      ? widget.poemIds!.length.clamp(3, 20)
+                      : 10,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

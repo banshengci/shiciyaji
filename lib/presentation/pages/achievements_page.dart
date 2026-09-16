@@ -132,6 +132,22 @@ class _AchievementsPageState extends State<AchievementsPage> {
     final ring = unlocked ? c.cinnabar : c.inkFaint;
     final nameColor = unlocked ? c.ink : c.inkFaint;
 
+    // 打开「全局字号」后，这一格的**外框必须保持 103×100**：它是网格的节奏，
+    // 跟着涨会让每行放得下的枚数变化、版面跳动。所以让位的是内圈 ——
+    // 徽章直径与间距按倍数收窄，把高度还给下面那行会变大的名字。
+    //
+    // 格内可用高度 = 100 − 12×2（内衬）− 1×2（描边）= 74，
+    // 需要 = 徽章 + 间距 + 名字行高。t = 1.0 时三个数字回到设计稿原值：
+    //   52 + 8 + 11×1.2 = 73.2 ✓（原实现写的行高是 1.5，即 76.5 —— 标准档就已经
+    //   溢出 2.5px，只是黄黑条纹混在描边里不容易被发现）
+    // t = 1.3 时：40 + 1.4 + 14.3×1.2 = 58.6 ✓
+    final t = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3);
+    final ringSize = 52 - (t - 1) * 40;
+    // 内圈始终比外圈小 12，双圈印章的关系不破
+    final innerSize = ringSize - 12;
+    final iconSize = 18 - (t - 1) * 6;
+    final gap = 8 - (t - 1) * 22;
+
     return GestureDetector(
       onTap: () => _showDetail(c, a),
       child: Container(
@@ -147,8 +163,8 @@ class _AchievementsPageState extends State<AchievementsPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Container(
-              width: 52,
-              height: 52,
+              width: ringSize,
+              height: ringSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: unlocked ? c.cinnabar.withOpacity(0.08) : null,
@@ -156,25 +172,27 @@ class _AchievementsPageState extends State<AchievementsPage> {
               ),
               child: Center(
                 child: Container(
-                  width: 40,
-                  height: 40,
+                  width: innerSize,
+                  height: innerSize,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(color: ring.withOpacity(0.45)),
                   ),
                   child: Icon(
                     unlocked ? a.icon : Icons.lock_outline,
-                    size: 18,
+                    size: iconSize,
                     color: ring,
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: gap),
             Text(
               a.name,
               style: ShiciText.caption.copyWith(
                 fontSize: 11,
+                // 行高必须写死 1.2：默认的 1.5 会把这一格撑爆（见上）
+                height: 1.2,
                 fontWeight: FontWeight.w500,
                 color: nameColor,
               ),

@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../widgets/poem_icon.dart';
+import 'monthly_report_page.dart';
+import '../../core/content_quality.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
@@ -32,6 +34,9 @@ class _StatsPageState extends State<StatsPage> {
   int _totalPoems = 0;
   int _totalAuthors = 0;
   int _historyCount = 0;
+
+  /// 用户自己补写的译文/赏析/背景条数
+  int _overrideCount = 0;
 
   /// 打卡日期 → 当日学习条数（`getStudyDatesCount` 返回值）
   Map<String, int> _heatmap = {};
@@ -83,6 +88,10 @@ class _StatsPageState extends State<StatsPage> {
       DatabaseHelper.getStudiedDynastyDistribution(),
       DatabaseHelper.getStudiedAuthorDistribution(limit: 10),
       DatabaseHelper.getFavoriteDynastyDistribution(),
+      DatabaseHelper.getOverrideCount(),
+      // 内容分级表：统计页要如实报出「多少内容是脚本生成的说明性补充」，
+      // 读晚了会先显示 0 再跳变
+      ContentQuality.load(),
     ]);
     if (mounted) {
       setState(() {
@@ -98,6 +107,7 @@ class _StatsPageState extends State<StatsPage> {
         _dynastyDist = Map<String, int>.from(results[9] as Map);
         _authorDist = Map<String, int>.from(results[10] as Map);
         _favDynastyDist = Map<String, int>.from(results[11] as Map);
+        _overrideCount = results[12] as int;
         _loading = false;
       });
     }
@@ -125,6 +135,7 @@ class _StatsPageState extends State<StatsPage> {
                           _buildOverview(c),
                           const SizedBox(height: 10),
                           _metaLine(c),
+                          _contentLine(c),
                           const SizedBox(height: 16),
                           _buildWeekChart(c),
                           const SizedBox(height: 16),
@@ -173,6 +184,25 @@ class _StatsPageState extends State<StatsPage> {
               ),
             ),
             const Spacer(),
+            // 月报入口：统计页看总数，月报看「这个月读了什么」，并可直接导出长图
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MonthlyReportPage()),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  children: <Widget>[
+                    PoemIcon(PoemIcons.progress, size: 18, color: c.cinnabar),
+                    const SizedBox(width: 6),
+                    Text('月报',
+                        style: ShiciText.body
+                            .copyWith(fontSize: 13, color: c.ink)),
+                  ],
+                ),
+              ),
+            ),
             PoemIcon(PoemIcons.stats, size: 22, color: c.ink),
           ],
         ),
@@ -254,6 +284,26 @@ class _StatsPageState extends State<StatsPage> {
     );
   }
 
+  /// 内容来源一览 —— 把「有多少赏析是脚本生成的」摆在明处。
+  ///
+  /// 这一行不是自曝其短，而是这个 App 的信用基础：1320 首里绝大多数篇目的
+  /// 译文/赏析是早期批量补的说明性文本，用户迟早会发现。与其让他自己撞见，
+  /// 不如直接说清楚，并给出「我来写」的出口（详情页）。
+  Widget _contentLine(ShiciColors c) {
+    if (!ContentQuality.isLoaded) return const SizedBox.shrink();
+    final curated = ContentQuality.totalPoems -
+        ContentQuality.generatedCount(ContentField.appreciation);
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, top: 4),
+      child: Text(
+        '赏析：精校 $curated 首 · 说明性补充 '
+        '${ContentQuality.generatedCount(ContentField.appreciation)} 首'
+        '${_overrideCount > 0 ? ' · 你补写 $_overrideCount 条' : ''}',
+        style: ShiciText.caption.copyWith(fontSize: 11, color: c.inkFaint),
+      ),
+    );
+  }
+
   // ── 图表卡：绢白 200 高 / 圆角 14 / 内衬 22 / gap 18 ────────────────
   Widget _buildWeekChart(ShiciColors c) {
     final today = DateTime.now();
@@ -267,8 +317,13 @@ class _StatsPageState extends State<StatsPage> {
     final maxVal = counts.fold<int>(0, (a, b) => a > b ? a : b);
     const weekdayLabels = <String>['一', '二', '三', '四', '五', '六', '日'];
 
+    // 卡片高度**不再写死 200**：底注那句「横轴为周一至周日 · 朱砂为今日 · 单位：首」
+    // 在全局字号放大后会折成两行，写死的高度就装不下了。
+    // 改成由内容撑开（标准档算出来是 201.5，与设计稿的 200 差 1.5px，肉眼无差），
+    // 于是任何档位、乃至将来再改字号，都不会再顶爆这张卡。
+    final t = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3);
+
     return Container(
-      height: 200,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: c.silk,
@@ -276,6 +331,8 @@ class _StatsPageState extends State<StatsPage> {
         border: Border.all(color: c.line),
       ),
       child: Column(
+        // 高度交给内容决定（外层不再是固定高度），Spacer 得换成定值间距
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text('近七日学习',
@@ -285,7 +342,9 @@ class _StatsPageState extends State<StatsPage> {
                   color: c.ink)),
           const SizedBox(height: 18),
           SizedBox(
-            height: 86,
+            // 柱高 58 是设计稿定值（图形不随字号变），但柱下那行星期字会变大，
+            // 所以这块得跟着让出余量，否则柱子会把星期字挤出去
+            height: 86 + (t - 1) * 20,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: <Widget>[
@@ -326,7 +385,7 @@ class _StatsPageState extends State<StatsPage> {
               ],
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 18),
           Text(
             '横轴为周一至周日 · 朱砂为今日 · 单位：首',
             style: ShiciText.caption.copyWith(fontSize: 11, color: c.inkSoft),
@@ -498,14 +557,23 @@ class _StatsPageState extends State<StatsPage> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text(e.value.key,
+                        // 图例右侧是「N首 · x%」，放大后这一行会不够宽。
+                        // 两块都用 Flexible + 省略号兜底：正常档位看不出区别，
+                        // 特大档位下宁可截断，也不要顶出黄黑条纹。
+                        Flexible(
+                          child: Text(e.value.key,
+                              overflow: TextOverflow.ellipsis,
+                              style: ShiciText.caption
+                                  .copyWith(fontSize: 12, color: c.ink)),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            '${e.value.value}首 · ${total > 0 ? (e.value.value / total * 100).toStringAsFixed(1) : '0.0'}%',
+                            overflow: TextOverflow.ellipsis,
                             style: ShiciText.caption
-                                .copyWith(fontSize: 12, color: c.ink)),
-                        const Spacer(),
-                        Text(
-                          '${e.value.value}首 · ${total > 0 ? (e.value.value / total * 100).toStringAsFixed(1) : '0.0'}%',
-                          style: ShiciText.caption
-                              .copyWith(fontSize: 11, color: c.inkSoft),
+                                .copyWith(fontSize: 11, color: c.inkSoft),
+                          ),
                         ),
                       ],
                     ),

@@ -95,3 +95,11 @@ dist/
 
 # 助手工作数据（项目记忆、技能、会话状态）——本地保留，不入库
 .workbuddy/
+
+# 扩充包的旧中间产物：只有 tools/ 下的转换脚本会读写，既不进包（pubspec 未列入 assets）
+# 也不必在仓库里留副本 —— 留在本地磁盘即可，clone 后重新生成
+assets/data/pack_*.json
+assets/data/poems_v2.json
+
+# 数据文件的本地备份
+assets/data/*.bak

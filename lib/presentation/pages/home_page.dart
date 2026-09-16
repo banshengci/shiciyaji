@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/design_tokens.dart';
+import '../../core/plan_scheduler.dart';
 import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
@@ -8,6 +9,7 @@ import '../widgets/poem_icon.dart';
 import '../widgets/poem_share_cards.dart';
 import '../widgets/shici_kit.dart';
 import 'authors_page.dart';
+import 'daily_flow_page.dart';
 import 'flying_flower_page.dart';
 import 'poem_card_page.dart';
 import 'poem_detail_page.dart';
@@ -37,6 +39,14 @@ class _HomePageState extends State<HomePage> {
   List<Poem> _dailyList = const <Poem>[];
   bool _loading = true;
 
+  /// 今日任务（来自配了每日定量的学习计划）
+  StudyPlan? _taskPlan;
+  PlanDay _taskDay = PlanDay.none;
+
+  /// 今日任务的前几首，用来在卡片上直接报篇名
+  List<Poem> _taskPoems = const <Poem>[];
+  PlanProgress _taskProgress = const PlanProgress(0, 0);
+
   @override
   void initState() {
     super.initState();
@@ -55,10 +65,36 @@ class _HomePageState extends State<HomePage> {
     final reviewCount = results[1] as int;
     final all = results[2] as List<Poem>;
 
+    // 今日任务：取第一个配了每日定量的计划。没配定量就整块不显示 ——
+    // 老计划（升级前建的）保持原样，不硬塞一个「今日 0 首」
+    final plans = await DatabaseHelper.getStudyPlans();
+    StudyPlan? taskPlan;
+    var taskDay = PlanDay.none;
+    var taskPoems = const <Poem>[];
+    var taskProgress = const PlanProgress(0, 0);
+    for (final plan in plans) {
+      if (plan.dailyTarget == null || plan.dailyTarget! <= 0) continue;
+      final studied = await DatabaseHelper.getStudiedIdsIn(plan.poemIds);
+      final day = PlanScheduler.today(plan, studiedIds: studied);
+      if (day.notStartedYet) continue;
+      taskPlan = plan;
+      taskDay = day;
+      taskProgress = PlanScheduler.progress(plan, studied);
+      taskPoems = day.poemIds.isEmpty
+          ? const <Poem>[]
+          : await DatabaseHelper.getPoemsByIds(day.poemIds.take(3).toList());
+      break;
+    }
+
+    if (!mounted) return;
     setState(() {
       _dailyPoem = poem;
       _reviewCount = reviewCount;
       _dailyList = _pickTodayList(all, 2);
+      _taskPlan = taskPlan;
+      _taskDay = taskDay;
+      _taskPoems = taskPoems;
+      _taskProgress = taskProgress;
       _loading = false;
     });
   }
@@ -138,6 +174,11 @@ class _HomePageState extends State<HomePage> {
                 children: <Widget>[
                   if (_dailyPoem != null) _heroCard(c, _dailyPoem!),
                   const SizedBox(height: 14),
+                  // 今日任务优先于复习卡：它是「今天从哪首开始」这个问题的答案
+                  if (_taskPlan != null) ...[
+                    _planTaskCard(c, _taskPlan!),
+                    const SizedBox(height: 14),
+                  ],
                   _reviewCard(c),
                   const SizedBox(height: 14),
                   _quickRow(c),
@@ -213,12 +254,27 @@ class _HomePageState extends State<HomePage> {
                 // 免得文字全挤在上半部、下缘留一道死白
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  Text(
-                    '今日推荐',
-                    style: ShiciText.caption.copyWith(
-                      fontSize: 11,
-                      color: c.onDeep.withOpacity(0.68),
-                    ),
+                  Row(
+                    children: <Widget>[
+                      Text(
+                        '今日推荐',
+                        style: ShiciText.caption.copyWith(
+                          fontSize: 11,
+                          color: c.onDeep.withOpacity(0.68),
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: _openDailyFlow,
+                        child: Text(
+                          '一日一赏 ›',
+                          style: ShiciText.caption.copyWith(
+                            fontSize: 11,
+                            color: c.onDeep.withOpacity(0.68),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -291,6 +347,120 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ── 复习卡：数量 + 说明 + 开始复习胶囊按钮 ────────────────────────
+  /// 今日任务卡：把「学习计划」变成「今天该学这几首」。
+  ///
+  /// 只有配了每日定量的计划才显示这张卡。老计划（升级前建的，`dailyTarget` 为空）
+  /// 一律不显示，保持原有体感 —— 不硬塞一个「今日 0 首」把用户吓一跳。
+  ///
+  /// 篇目按**顺序推进**而不是按天分摊：昨天没学完的不补，今天照旧的量走。
+  /// 断卡三天回来只会看到今天的量，不会看到 12 首待办。
+  Widget _planTaskCard(ShiciColors c, StudyPlan plan) {
+    final day = _taskDay;
+    final progress = _taskProgress;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.silk,
+        borderRadius: BorderRadius.circular(ShiciSize.rLg),
+        border: Border.all(color: c.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              PoemIcon(PoemIcons.goal, size: 18, color: c.pine),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '今日任务 · ${plan.name}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ShiciText.heading.copyWith(fontSize: 14, color: c.ink),
+                ),
+              ),
+              if (day.poemIds.isNotEmpty)
+                Text('${day.poemIds.length} 首',
+                    style: ShiciText.caption
+                        .copyWith(fontSize: 11, color: c.cinnabar)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            progress.total == 0
+                ? '计划里还没有篇目'
+                : '已学 ${progress.done} / ${progress.total} 首',
+            style: ShiciText.caption.copyWith(fontSize: 11, color: c.inkSoft),
+          ),
+          const SizedBox(height: 12),
+          if (day.finished)
+            Text('这个计划已经读完了，去建一个新计划吧。',
+                style: ShiciText.body.copyWith(fontSize: 13, color: c.inkSoft))
+          else if (day.poemIds.isEmpty)
+            Text('今天没有待学的篇目。',
+                style: ShiciText.body.copyWith(fontSize: 13, color: c.inkSoft))
+          else ...[
+            for (final p in _taskPoems)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openPoem(p.id),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: <Widget>[
+                      Container(
+                        width: 4,
+                        height: 4,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: c.cinnabar,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '《${p.title}》',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ShiciText.body
+                              .copyWith(fontSize: 13, color: c.ink),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(p.authorName ?? '',
+                          style: ShiciText.caption
+                              .copyWith(fontSize: 11, color: c.inkFaint)),
+                    ],
+                  ),
+                ),
+              ),
+            if (day.poemIds.length > _taskPoems.length)
+              Text('还有 ${day.poemIds.length - _taskPoems.length} 首',
+                  style: ShiciText.caption
+                      .copyWith(fontSize: 11, color: c.inkFaint)),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: SizedBox(
+                height: 36,
+                child: FilledButton(
+                  onPressed: () => _openPoem(day.poemIds.first),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.pine,
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                  ),
+                  child: const Text('开始学习',
+                      style: TextStyle(fontSize: 13)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _reviewCard(ShiciColors c) {
     return ShiciCard(
       height: 88,
@@ -301,25 +471,33 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: <Widget>[
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                '$_reviewCount 首',
-                style: ShiciText.title.copyWith(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  color: c.ink,
+          // 左侧必须可伸缩：全局字号放到特大时，「今日待复习 · 艾宾浩斯曲线」
+          // 加右侧红胶囊会超出卡片宽度。给它 Expanded 并允许省略，
+          // 宁可少显示两个字，也不要顶出黄黑条纹。
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '$_reviewCount 首',
+                  style: ShiciText.title.copyWith(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: c.ink,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '今日待复习 · 艾宾浩斯曲线',
-                style: ShiciText.caption.copyWith(color: c.inkSoft),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  '今日待复习 · 艾宾浩斯曲线',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ShiciText.caption.copyWith(color: c.inkSoft),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.fromLTRB(18, 11, 16, 11),
             decoration: BoxDecoration(
@@ -392,8 +570,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _listHeader(ShiciColors c) {
+    // 行高按全局字号等比放大：写死 22 时，「今日诗单」在特大档位会被压爆
+    final t = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3);
     return SizedBox(
-      height: 22,
+      height: 22 * t,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -451,6 +631,13 @@ class _HomePageState extends State<HomePage> {
   void _openPoem(int poemId) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => PoemDetailPage(poemId: poemId)),
+    );
+  }
+
+  /// 打开「一日一赏」卡片流（今日诗 → 同作者 → 同朝代）。
+  void _openDailyFlow() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const DailyFlowPage()),
     );
   }
 

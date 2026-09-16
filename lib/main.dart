@@ -15,6 +15,7 @@ import 'presentation/pages/favorites_page.dart';
 import 'presentation/pages/settings_page.dart';
 import 'presentation/pages/splash_page.dart';
 import 'core/achievement_service.dart';
+import 'core/ui_scale.dart';
 import 'data/models/achievement.dart';
 
 void main() async {
@@ -26,6 +27,9 @@ void main() async {
   // 同步「繁体显示」偏好，让模型层（Poem.fromMap 等）按偏好输出，
   // 首页/搜索/收藏等未内置繁简开关的页面也能跟随设置
   await S2TConverter.syncPreference();
+  // 全局字号必须在首帧前读出来：晚一步就会先按 1.0 排一次版、读完再整页跳一下，
+  // 比启动页多停几十毫秒更刺眼。
+  await UiFontScale.load();
   // 注意：数据库预初始化与拼音索引预热已移入 SplashPage，
   // 先展示品牌首屏、数据就绪后再进入主壳，避免白屏闪烁。
   runApp(const ShiciYajiApp());
@@ -57,19 +61,34 @@ class _ShiciYajiAppState extends State<ShiciYajiApp> {
     ThemeData materialFromShad(BuildContext context, ThemeData mTheme) =>
         mTheme.brightness == Brightness.dark ? AppTheme.dark : AppTheme.light;
 
-    return ShadApp.material(
-      debugShowCheckedModeBanner: false,
-      title: '诗词雅集',
-      theme: AppTheme.shadLight(),
-      darkTheme: AppTheme.shadDark(),
-      themeMode: _themeMode,
-      materialThemeBuilder: materialFromShad,
-      home: _ready
-          ? MainShell(
-              themeMode: _themeMode,
-              onThemeChanged: _setThemeMode,
-            )
-          : SplashPage(onFinished: _onSplashFinished),
+    // 全局字号：整棵树唯一的文本缩放入口（设置页写入 UiFontScale.notifier）。
+    // 用 MediaQuery 而不是改字号令牌 —— 令牌是 static const，且 Material / shadcn
+    // 组件用的是自己的默认字号，改令牌根本覆盖不到。
+    // ⚠️ 这里**刻意覆盖**系统字体缩放，而不是与它相乘：本应用自带四档字号，
+    // 再叠一层系统缩放，同一个档位在不同手机上会差出一倍，「标准」就没有基准了。
+    return ValueListenableBuilder<double>(
+      valueListenable: UiFontScale.notifier,
+      builder: (context, scale, _) => ShadApp.material(
+        debugShowCheckedModeBanner: false,
+        title: '诗词雅集',
+        theme: AppTheme.shadLight(),
+        darkTheme: AppTheme.shadDark(),
+        themeMode: _themeMode,
+        materialThemeBuilder: materialFromShad,
+        // builder 包在 Navigator 之外，所以所有路由与 Overlay（含成就横幅、
+        // 各类弹窗）都在缩放范围内。
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
+        home: _ready
+            ? MainShell(
+                themeMode: _themeMode,
+                onThemeChanged: _setThemeMode,
+              )
+            : SplashPage(onFinished: _onSplashFinished),
+      ),
     );
   }
 }

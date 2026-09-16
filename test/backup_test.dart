@@ -62,7 +62,8 @@ void main() {
 
   test('导出内容覆盖全部用户数据表', () async {
     final data = await DatabaseHelper.exportAllData();
-    expect(data['backupFormat'], 1);
+    // v2：新增 contentOverrides 与计划的排期字段（v1 旧文件仍可导入，见下一条）
+    expect(data['backupFormat'], 2);
     expect(data['studyPlans'].length, 1);
     // 唐诗苑 + addFavorite(2) 自动创建的「默认收藏」= 2
     expect(data['collections'].length, 2);
@@ -117,6 +118,9 @@ void main() {
     expect(reExported['favorites'], data['favorites']);
     expect(reExported['studyRecords'], data['studyRecords']);
     expect(reExported['notes'], data['notes']);
+    // 用户补写的译文/赏析/背景必须跟着备份走：它在 poems 表之外，重装无法再生
+    expect(reExported['contentOverrides'], data['contentOverrides']);
+    expect(summary['contentOverrides'], 0);
     expect(reExported['readingHistory'], data['readingHistory']);
     expect(reExported['installedPacks'], data['installedPacks']);
   });
@@ -132,7 +136,7 @@ void main() {
     // 内容为合法备份 JSON，可再导入
     final content = await last.readAsString();
     final decoded = jsonDecode(content) as Map<String, dynamic>;
-    expect(decoded['backupFormat'], 1);
+    expect(decoded['backupFormat'], 2);
 
     final count = await DatabaseHelper.getAutoBackupCount();
     expect(count, lessThanOrEqualTo(2));

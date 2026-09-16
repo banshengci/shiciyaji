@@ -11,12 +11,13 @@ import 'package:sqflite/sqflite.dart';
 import '../models/models.dart';
 import '../../core/s2t_converter.dart';
 import '../../utils/pinyin_helper.dart';
+import '../../utils/verse_splitter.dart';
 
 /// SQLite 数据库帮助类
 /// 负责：建表、初始数据加载、DAO 查询
 class DatabaseHelper {
   static const _dbName = 'poetry.db';
-  static const _dbVersion = 8;
+  static const _dbVersion = 10;
 
   static Database? _db;
   static bool _initialized = false;
@@ -233,7 +234,9 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         description TEXT,
         poem_ids TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        daily_target INTEGER,
+        start_date DATE
       )
     ''');
 
@@ -253,6 +256,22 @@ class DatabaseHelper {
         content TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME
+      )
+    ''');
+
+    // 用户对译文 / 赏析 / 背景的本地覆盖（v9）
+    //
+    // 为什么单独建表而不是直接改 poems 行：poems 是**可再生数据**（assets 播种 + 离线包导入），
+    // v7/v8 两次迁移都整块清空重建过；用户写的东西必须放在清空范围之外，否则升级即丢失。
+    // 字段名用 tools/audit_content_quality.py 的 field 名（translation/appreciation/background），
+    // (poem_id, field) 唯一，一事一行。
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS poem_content_overrides (
+        poem_id INTEGER NOT NULL,
+        field TEXT NOT NULL,
+        content TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (poem_id, field)
       )
     ''');
 
@@ -344,6 +363,21 @@ class DatabaseHelper {
     // 用户收藏/笔记若指向被替换的旧 id，会在删包时一并清理（与卸载逻辑一致）。
     if (oldVersion < 8) {
       await _upgradeV8RefreshPacks(db, assetReader: assetReader);
+    }
+    // v8→v9: 两项新增，都是纯增量、不动既有数据。
+    // 1. `poem_content_overrides`：用户对译文/赏析/背景的本地覆盖。
+    //    背景是扩充包里约八成内容的译文/赏析是脚本生成的说明性占位文本，
+    //    用户想写自己的理解时必须有地方存，且不能被后续离线包升级冲掉。
+    // 2. `study_plans` 加 `daily_target` / `start_date`：把「计划」变成
+    //    「今天该学哪几首」，老计划留空即按「不限量」兼容。
+    if (oldVersion < 9) {
+      await _upgradeV9ContentOverridesAndPlanSchedule(db);
+    }
+    // v9→v10: 离线包内容刷新（修复脚本占位的译文/赏析/背景）。
+    // 与 v8「删区间整段重建」不同，这里只**就地更新内容列**并重建分类关联，
+    // 不碰 favorites/study_records/study_notes/reading_history —— 用户数据一条不丢。
+    if (oldVersion < 10) {
+      await _upgradeV10RefreshPackContent(db, assetReader: assetReader);
     }
   }
 
@@ -490,6 +524,165 @@ class DatabaseHelper {
         .values
         .first as int?;
     debugPrint('✅ v8 完成：诗词共 $pc 首');
+  }
+
+  /// v9 迁移：本地内容覆盖表 + 学习计划排期字段。
+  ///
+  /// **两件事都是纯增量**：不加列、不删行、不重建任何表，
+  /// 因此不需要像 v7/v8 那样先备份用户数据再回填。
+  ///
+  /// - `poem_content_overrides`：用户对译文/赏析/背景的本地覆盖。
+  ///   必须独立于 `poems` 表 —— 后者是 assets 播种 + 离线包导入的可再生数据，
+  ///   v7/v8 都整块清空重建过，用户写的东西放进去升级即丢。
+  /// - `study_plans.daily_target` / `start_date`：把计划从「一份清单」
+  ///   变成「今天该学哪几首」。老计划两列为 NULL，读取时按「不限量」兼容。
+  static Future<void> _upgradeV9ContentOverridesAndPlanSchedule(
+      Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS poem_content_overrides (
+        poem_id INTEGER NOT NULL,
+        field TEXT NOT NULL,
+        content TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (poem_id, field)
+      )
+    ''');
+
+    // ALTER TABLE 不支持 IF NOT EXISTS，重复加列会抛错；
+    // 用 PRAGMA 先问一句，让迁移可重复执行（测试会反复跨版本升级）。
+    final columns = await db.rawQuery('PRAGMA table_info(study_plans)');
+    final existing = columns.map((r) => r['name'] as String).toSet();
+    for (final entry in <String, String>{
+      'daily_target': 'INTEGER',
+      'start_date': 'DATE',
+    }.entries) {
+      if (!existing.contains(entry.key)) {
+        await db.execute(
+            'ALTER TABLE study_plans ADD COLUMN ${entry.key} ${entry.value}');
+      }
+    }
+
+    final oc = (await db.rawQuery('SELECT COUNT(*) FROM poem_content_overrides'))
+        .first
+        .values
+        .first as int?;
+    debugPrint('✅ v9 完成：内容覆盖表就绪（现有 $oc 条），计划排期字段就绪');
+  }
+
+  /// v9→v10：离线包内容刷新（修复脚本占位的译文/赏析/背景，以及繁简归一后的错译）。
+  ///
+  /// 与 v8「删区间整段重建」不同，这里只**就地更新内容列**
+  /// （title/content/translation/appreciation/background/notes/type/source/sort_order）
+  /// 并重建分类关联，**不碰** favorites/study_records/study_notes/reading_history ——
+  /// 用户数据一条不丢。仅对 `installed_packs` 中已装的包生效；未安装的包用户手动安装时
+  /// 自然拿到新版 assets，无需迁移。
+  static Future<void> _upgradeV10RefreshPackContent(Database db,
+      {Future<String> Function(String path)? assetReader}) async {
+    debugPrint('🔄 v10 离线包内容刷新（保留用户数据）...');
+    assetReader ??= _defaultAssetReader();
+    // 防御：升级前的老库可能没有 installed_packs 表（如单元测试造的极简 schema）
+    final tbl = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='installed_packs'");
+    if (tbl.isEmpty) {
+      debugPrint('✅ v10 完成：无 installed_packs 表，跳过');
+      return;
+    }
+    final installedRows =
+        await db.query('installed_packs', columns: ['pack_name']);
+    if (installedRows.isEmpty) {
+      debugPrint('✅ v10 完成：无已装离线包，跳过');
+      return;
+    }
+
+    const ranges = <String, (int, int)>{
+      'xiaoxue': (10000, 12000),
+      'tangshi': (20000, 22000),
+      'songci': (30000, 32000),
+    };
+
+    for (final row in installedRows) {
+      final packName = row['pack_name'] as String;
+      final range = ranges[packName];
+      if (range == null) {
+        debugPrint('⚠️ v10 未知离线包 $packName，跳过');
+        continue;
+      }
+      final (idStart, idEnd) = range;
+      try {
+        final jsonString =
+            await assetReader('assets/data/packs/$packName.json');
+        final data = jsonDecode(jsonString) as Map<String, dynamic>;
+        final poems = (data['poems'] as List).cast<Map<String, dynamic>>();
+        await db.transaction((txn) async {
+          // 清本区间的分类关联后按新版重建（分类非用户数据）
+          await txn.delete('poem_categories',
+              where: 'poem_id >= ? AND poem_id < ?',
+              whereArgs: [idStart, idEnd]);
+          for (final p in poems) {
+            final pid = p['id'];
+            final content = S2TConverter.toSimplified(
+                (p['content'] as String?) ?? '');
+            var titleValue = (p['title'] as String?)?.trim() ?? '';
+            if (titleValue.isEmpty) {
+              final rhythmic = (p['rhythmic'] as String?)?.trim() ?? '';
+              if (rhythmic.isNotEmpty) {
+                titleValue = rhythmic;
+              } else {
+                final firstLine = content.split('\n').first.trim();
+                titleValue = firstLine.length > 20
+                    ? firstLine.substring(0, 20)
+                    : (firstLine.isEmpty ? '无题' : firstLine);
+              }
+            }
+            final translation = S2TConverter.toSimplified(
+                    (p['translation'] as String?) ?? '')
+                .trim();
+            final appreciation = S2TConverter.toSimplified(
+                    (p['appreciation'] as String?) ?? '')
+                .trim();
+            final background = S2TConverter.toSimplified(
+                    (p['background'] as String?) ?? '')
+                .trim();
+            final notes = S2TConverter.toSimplified(
+                    (p['notes'] as String?) ?? '')
+                .trim();
+            final vals = <String, Object?>{
+              'title': titleValue,
+              'content': content,
+              'translation': translation,
+              'appreciation': appreciation,
+              'background': background,
+              'notes': notes.isEmpty ? '（暂无注释）' : notes,
+            };
+            if (p['type'] != null) vals['type'] = p['type'];
+            if (p['source'] != null) vals['source'] = p['source'];
+            if (p['sort_order'] != null) vals['sort_order'] = p['sort_order'];
+            await txn.update('poems', vals,
+                where: 'id = ?', whereArgs: [pid]);
+            final cats = (p['category_ids'] as List?)?.cast<int>() ?? const [];
+            for (final cid in cats) {
+              await txn.insert(
+                'poem_categories',
+                {'poem_id': pid, 'category_id': cid},
+                conflictAlgorithm: ConflictAlgorithm.ignore,
+              );
+            }
+          }
+          await txn.update('installed_packs', {'count': poems.length},
+              where: 'pack_name = ?', whereArgs: [packName]);
+        });
+        debugPrint('✅ v10 刷新 $packName：${poems.length} 首');
+      } catch (e) {
+        debugPrint('⚠️ v10 刷新离线包 $packName 失败: $e');
+      }
+    }
+
+    invalidatePinyinIndex();
+    final pc = (await db.rawQuery('SELECT COUNT(*) FROM poems'))
+        .first
+        .values
+        .first as int?;
+    debugPrint('✅ v10 完成：诗词共 $pc 首');
   }
 
   /// 将数据库中所有繁体字转为简体字
@@ -976,6 +1169,76 @@ class DatabaseHelper {
     return Poem.fromMap(results.first);
   }
 
+  /// 「含某字/某词的诗句」—— 按字查诗的底座（也供详情页点字查字使用）。
+  ///
+  /// 算法分两步，都不需要额外索引：
+  /// 1. SQL 层用 `content LIKE %kw%` 粗筛出候选诗（1320 首全表扫描是毫秒级）；
+  /// 2. 在 Dart 里按句读切开精确匹配，**标点无关**（比较的是 `canonical` 结果），
+  ///    这样用户搜「床前明月光」也能命中原文「床前明月光，」那一句。
+  ///
+  /// 返回一句一条、按诗词 id 稳定排序 —— 同样的输入必须得到同样的结果，
+  /// 否则「点字查字」每次弹出的次序都在变，看着像随机。
+  static Future<List<VerseHit>> searchVerses(String keyword,
+      {int limit = 50, int scanPoems = 600}) async {
+    final kw = canonical(keyword);
+    if (kw.isEmpty) return const <VerseHit>[];
+
+    final db = await database();
+    final rows = await db.query(
+      'poems',
+      columns: ['id', 'title', 'content', 'author_id'],
+      where: 'content LIKE ?',
+      whereArgs: ['%${keyword.trim()}%'],
+      orderBy: 'id ASC',
+      limit: scanPoems,
+    );
+    if (rows.isEmpty) return const <VerseHit>[];
+
+    // 作者名一次性查出来，避免逐条查库
+    final authorIds = rows
+        .map((r) => r['author_id'] as int?)
+        .whereType<int>()
+        .toSet()
+        .toList();
+    final authorNames = <int, String>{};
+    for (var i = 0; i < authorIds.length; i += 500) {
+      final chunk = authorIds.sublist(
+          i, (i + 500) > authorIds.length ? authorIds.length : i + 500);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final authors = await db.rawQuery(
+          'SELECT id, name FROM authors WHERE id IN ($placeholders)', chunk);
+      for (final a in authors) {
+        authorNames[a['id'] as int] = a['name'] as String? ?? '';
+      }
+    }
+
+    final hits = <VerseHit>[];
+    for (final row in rows) {
+      final content = row['content'] as String? ?? '';
+      for (final verse in splitVerses(content)) {
+        if (!canonical(verse).contains(kw)) continue;
+        hits.add(VerseHit(
+          poemId: row['id'] as int,
+          title: row['title'] as String? ?? '',
+          authorName: authorNames[row['author_id'] as int?],
+          verse: verse,
+        ));
+        if (hits.length >= limit) return hits;
+      }
+    }
+    return hits;
+  }
+
+  /// 含某字的诗词数量（「这个字有多少首诗用过」这类提示用）
+  static Future<int> countPoemsContaining(String keyword) async {
+    final kw = keyword.trim();
+    if (kw.isEmpty) return 0;
+    final db = await database();
+    final r = await db.rawQuery(
+        'SELECT COUNT(*) AS c FROM poems WHERE content LIKE ?', ['%$kw%']);
+    return r.first['c'] as int? ?? 0;
+  }
+
   // ============ DAO: 朝代/作者/分类 ============
 
   static Future<List<Dynasty>> getAllDynasties() async {
@@ -1271,12 +1534,20 @@ class DatabaseHelper {
   }
 
   static Future<int> createStudyPlan(
-      String name, String? description, List<int> poemIds) async {
+      String name, String? description, List<int> poemIds,
+      {int? dailyTarget}) async {
     final db = await database();
     return await db.insert('study_plans', {
       'name': name,
       'description': description,
       'poem_ids': jsonEncode(poemIds),
+      // 排期字段：没填定量就留空（= 不限量），起始日以创建当天算
+      'daily_target': (dailyTarget == null || dailyTarget <= 0)
+          ? null
+          : dailyTarget,
+      'start_date': dailyTarget == null || dailyTarget <= 0
+          ? null
+          : DateTime.now().toIso8601String().substring(0, 10),
     });
   }
 
@@ -1323,6 +1594,46 @@ class DatabaseHelper {
       total += r.first['c'] as int;
     }
     return total;
+  }
+
+  /// 设置计划的排期（每日定量 / 起始日）。
+  ///
+  /// `dailyTarget == 0` 表示关闭定量（存 null），而不是「每天 0 首」——
+  /// 后者会让今日任务恒为空，是个陷阱。
+  static Future<void> updatePlanSchedule(
+    int planId, {
+    required int? dailyTarget,
+    String? startDate,
+  }) async {
+    final db = await database();
+    await db.update(
+        'study_plans',
+        {
+          'daily_target': (dailyTarget == null || dailyTarget <= 0)
+              ? null
+              : dailyTarget,
+          'start_date': startDate,
+        },
+        where: 'id = ?',
+        whereArgs: [planId]);
+  }
+
+  /// 计划里「已学」的诗词 id 集合（排期器要拿它跳过学过的）
+  static Future<Set<int>> getStudiedIdsIn(List<int> poemIds) async {
+    if (poemIds.isEmpty) return <int>{};
+    final db = await database();
+    final studied = <int>{};
+    for (var i = 0; i < poemIds.length; i += 500) {
+      final chunk = poemIds.sublist(
+          i, (i + 500) > poemIds.length ? poemIds.length : i + 500);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final r = await db.rawQuery(
+          'SELECT DISTINCT poem_id FROM study_records '
+          'WHERE poem_id IN ($placeholders)',
+          chunk);
+      studied.addAll(r.map((e) => e['poem_id'] as int));
+    }
+    return studied;
   }
 
   /// 收藏夹数量
@@ -1553,7 +1864,7 @@ class DatabaseHelper {
     if (total > 20) {
       await db.rawDelete('''
         DELETE FROM reading_history WHERE id NOT IN (
-          SELECT id FROM reading_history ORDER BY read_at DESC LIMIT 20
+          SELECT id FROM reading_history ORDER BY read_at DESC, id DESC LIMIT 20
         )
       ''');
     }
@@ -1567,7 +1878,9 @@ class DatabaseHelper {
       JOIN poems p ON rh.poem_id = p.id
       LEFT JOIN authors a ON p.author_id = a.id
       LEFT JOIN dynasties d ON p.dynasty_id = d.id
-      ORDER BY rh.read_at DESC
+      -- 次键必须是 id：read_at 只精确到毫秒，连着点开几首诗很容易落在同一毫秒里，
+      -- 此时单按时间排序 SQLite 会给一个不稳定的顺序（表现为「最近读的没排在最前」）。
+      ORDER BY rh.read_at DESC, rh.id DESC
     ''');
     return results.map(Poem.fromMap).toList();
   }
@@ -1768,6 +2081,59 @@ class DatabaseHelper {
   static Future<void> deleteNote(int noteId) async {
     final db = await database();
     await db.delete('study_notes', where: 'id = ?', whereArgs: [noteId]);
+  }
+
+  // ============ DAO: 内容覆盖（用户补写的译文/赏析/背景）============
+
+  /// 读取某首诗的全部本地覆盖：`{translation|appreciation|background: 正文}`
+  static Future<Map<String, String>> getPoemOverrides(int poemId) async {
+    final db = await database();
+    final rows = await db.query('poem_content_overrides',
+        where: 'poem_id = ?', whereArgs: [poemId]);
+    return {
+      for (final r in rows) r['field'] as String: r['content'] as String,
+    };
+  }
+
+  /// 批量读取覆盖（列表页要标「已补全」时用，避免 N+1 查询）
+  static Future<Set<int>> getPoemIdsWithOverride() async {
+    final db = await database();
+    final rows = await db.rawQuery(
+        'SELECT DISTINCT poem_id FROM poem_content_overrides');
+    return rows.map((r) => r['poem_id'] as int).toSet();
+  }
+
+  /// 写入/更新一条覆盖。空内容等于删除 —— 让「清空即恢复原样」成立。
+  static Future<void> savePoemOverride(
+      int poemId, String field, String content) async {
+    if (content.trim().isEmpty) {
+      await deletePoemOverride(poemId, field);
+      return;
+    }
+    final db = await database();
+    await db.insert(
+        'poem_content_overrides',
+        {
+          'poem_id': poemId,
+          'field': field,
+          'content': content.trim(),
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static Future<void> deletePoemOverride(int poemId, String field) async {
+    final db = await database();
+    await db.delete('poem_content_overrides',
+        where: 'poem_id = ? AND field = ?', whereArgs: [poemId, field]);
+  }
+
+  /// 覆盖条数（统计页显示「我补写了多少条」）
+  static Future<int> getOverrideCount() async {
+    final db = await database();
+    final r = await db
+        .rawQuery('SELECT COUNT(*) AS c FROM poem_content_overrides');
+    return r.first['c'] as int;
   }
 
   /// 笔记总数
@@ -2065,7 +2431,12 @@ class DatabaseHelper {
   // 只备份「用户生成数据」，预置诗词/作者/朝代/分类来自 assets，重装后可经离线包恢复，
   // 不纳入备份以免体积膨胀与 id 冲突。导入采用「合并 + 自然唯一键去重」，不会删除备份中不存在的现有数据。
 
-  static const int _backupFormatVersion = 1;
+  /// 备份格式版本。
+  /// - v1：初始
+  /// - v2：加入 `contentOverrides`（用户补写的译文/赏析/背景）、
+  ///   计划的 `daily_target` / `start_date`。**读取时按「缺键视为空」处理，
+  ///   所以 v1 的旧备份文件仍可正常导入**，不需要转换。
+  static const int _backupFormatVersion = 2;
 
   /// 导出全部用户数据为可序列化 Map（不含自增 id，避免恢复时 id 冲突）
   static Future<Map<String, dynamic>> exportAllData() async {
@@ -2079,8 +2450,9 @@ class DatabaseHelper {
     return {
       'backupFormat': _backupFormatVersion,
       'exportedAt': DateTime.now().toIso8601String(),
-      'studyPlans': await cols(
-          'study_plans', ['name', 'description', 'poem_ids', 'created_at']),
+      'studyPlans': await cols('study_plans',
+          ['name', 'description', 'poem_ids', 'created_at', 'daily_target',
+              'start_date']),
       'collections': await cols('collections', ['name', 'created_at']),
       'favorites':
           await cols('favorites', ['poem_id', 'collection_name', 'created_at']),
@@ -2088,6 +2460,9 @@ class DatabaseHelper {
           await cols('study_records', ['poem_id', 'study_date', 'status']),
       'notes': await cols(
           'study_notes', ['poem_id', 'content', 'created_at', 'updated_at']),
+      // 用户写的内容必须跟着走：它在 poems 表之外，重装或换机后无法再生
+      'contentOverrides': await cols('poem_content_overrides',
+          ['poem_id', 'field', 'content', 'updated_at']),
       'readingHistory': await cols('reading_history', ['poem_id', 'read_at']),
       'installedPacks': await cols('installed_packs',
           ['pack_name', 'description', 'source', 'count', 'installed_at']),
@@ -2131,6 +2506,9 @@ class DatabaseHelper {
             'description': p['description'],
             'poem_ids': p['poem_ids'],
             'created_at': p['created_at'],
+            // v1 旧备份没有这两列，取出来是 null —— 正好落在「不限量」语义上
+            'daily_target': p['daily_target'],
+            'start_date': p['start_date'],
           });
           planAdded++;
         }
@@ -2197,6 +2575,32 @@ class DatabaseHelper {
         }
       }
       summary['notes'] = noteAdded;
+
+      // 内容覆盖（(poem_id, field) 主键去重）
+      //
+      // 与其它表一致走「合并 + 不覆盖」：同一首诗同一字段本地已有内容时，
+      // 保留下现有的那份 —— 用户当前的判断比旧备份更可信。
+      final overrides = (data['contentOverrides'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+      int ovAdded = 0;
+      for (final o in overrides) {
+        final pid = o['poem_id'];
+        final field = o['field'];
+        final content = o['content'];
+        if (pid == null || field == null) continue;
+        final exists = await txn.query('poem_content_overrides',
+            where: 'poem_id = ? AND field = ?', whereArgs: [pid, field]);
+        if (exists.isEmpty) {
+          await txn.insert('poem_content_overrides', {
+            'poem_id': pid,
+            'field': field,
+            'content': content,
+            'updated_at': o['updated_at'],
+          });
+          ovAdded++;
+        }
+      }
+      summary['contentOverrides'] = ovAdded;
 
       // 阅读历史（poem_id 去重）
       final history = (data['readingHistory'] as List? ?? [])

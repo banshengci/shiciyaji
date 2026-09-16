@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../widgets/poem_icon.dart';
 import '../../core/design_tokens.dart';
+import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 
@@ -23,6 +24,9 @@ class _CreatePlanPageState extends State<CreatePlanPage> {
   final Set<int> _selected = {};
   bool _loading = true;
   String _filter = '';
+
+  /// 每日定量；0 = 不限量（不排期，保持旧行为）
+  int _dailyTarget = 0;
 
   @override
   void initState() {
@@ -94,6 +98,46 @@ class _CreatePlanPageState extends State<CreatePlanPage> {
                           prefixIcon: PoemIcon(PoemIcons.note),
                         ),
                         maxLines: 2,
+                      ),
+                      const SizedBox(height: 12),
+                      // 每日定量：填了它首页才会出现「今日任务」，以及「今天这几首」
+                      Row(
+                        children: [
+                          PoemIcon(PoemIcons.goal,
+                              size: 18, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text('每天学',
+                              style: ShiciText.body
+                                  .copyWith(fontSize: 13, color: c.ink)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SegmentedButton<int>(
+                                showSelectedIcon: false,
+                                segments: const [
+                                  ButtonSegment(value: 0, label: Text('不限')),
+                                  ButtonSegment(value: 1, label: Text('1 首')),
+                                  ButtonSegment(value: 2, label: Text('2 首')),
+                                  ButtonSegment(value: 3, label: Text('3 首')),
+                                  ButtonSegment(value: 5, label: Text('5 首')),
+                                ],
+                                selected: {_dailyTarget},
+                                onSelectionChanged: (set) =>
+                                    setState(() => _dailyTarget = set.first),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _dailyTarget == 0
+                            ? '不排期：只统计总进度，首页不显示今日任务。'
+                            : '首页会给出「今日 $_dailyTarget 首」，按顺序推进；'
+                                '某天没学也不累积欠账。',
+                        style: ShiciText.caption
+                            .copyWith(fontSize: 11, color: c.inkSoft),
                       ),
                     ],
                   ),
@@ -192,7 +236,12 @@ class _CreatePlanPageState extends State<CreatePlanPage> {
       return;
     }
     final ids = _allPoems.where((p) => _selected.contains(p.id)).map((p) => p.id).toList();
-    await DatabaseHelper.createStudyPlan(name, _descController.text.trim(), ids);
+    await DatabaseHelper.createStudyPlan(
+      name,
+      _descController.text.trim(),
+      ids,
+      dailyTarget: _dailyTarget == 0 ? null : _dailyTarget,
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('学习计划创建成功！'), duration: Duration(seconds: 2)),

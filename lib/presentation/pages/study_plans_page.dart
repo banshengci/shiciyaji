@@ -4,6 +4,7 @@ import '../widgets/poem_icon.dart';
 import '../widgets/shici_kit.dart';
 import '../widgets/empty_state.dart';
 import '../../core/design_tokens.dart';
+import '../../core/plan_scheduler.dart';
 import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
@@ -26,6 +27,9 @@ class StudyPlansPage extends StatefulWidget {
 class _StudyPlansPageState extends State<StudyPlansPage> {
   List<StudyPlan> _plans = <StudyPlan>[];
   Map<int, int> _planStudied = <int, int>{};
+
+  /// 配了每日定量的计划「今日还剩几首」；0 表示没配定量或今天已学完
+  Map<int, int> _planToday = <int, int>{};
   bool _loading = true;
 
   @override
@@ -46,11 +50,20 @@ class _StudyPlansPageState extends State<StudyPlansPage> {
     final studiedCounts = await Future.wait(
       plans.map((p) => DatabaseHelper.getStudiedCountIn(p.poemIds)),
     );
+    // 配了每日定量的计划再算一次「今日还剩几首」（没配的不显示，保持老样子）
+    final todayCounts = await Future.wait(plans.map((p) async {
+      if (p.dailyTarget == null || p.dailyTarget! <= 0) return 0;
+      final studied = await DatabaseHelper.getStudiedIdsIn(p.poemIds);
+      return PlanScheduler.today(p, studiedIds: studied).poemIds.length;
+    }));
     if (mounted) {
       setState(() {
         _plans = plans;
         _planStudied = <int, int>{
           for (var i = 0; i < plans.length; i++) plans[i].id: studiedCounts[i],
+        };
+        _planToday = <int, int>{
+          for (var i = 0; i < plans.length; i++) plans[i].id: todayCounts[i],
         };
         _loading = false;
       });
@@ -187,6 +200,28 @@ class _StudyPlansPageState extends State<StudyPlansPage> {
                   ),
                 ),
               ),
+              // 配了每日定量的计划多一枚「今日」标记，让「今天学几首」一眼可见
+              if (plan.dailyTarget != null) ...<Widget>[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: c.pine.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(ShiciSize.rSeal),
+                  ),
+                  child: Text(
+                    (_planToday[plan.id] ?? 0) > 0
+                        ? '今日 ${_planToday[plan.id]} 首'
+                        : '今日已学完',
+                    style: ShiciText.caption.copyWith(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: c.pine,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           if (plan.description != null) ...<Widget>[

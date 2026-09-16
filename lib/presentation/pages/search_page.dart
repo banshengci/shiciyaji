@@ -25,6 +25,7 @@ class _SearchPageState extends State<SearchPage> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   List<Poem> _results = [];
+  List<VerseHit> _verseHits = const <VerseHit>[];
   List<String> _history = [];
   bool _searching = false;
   bool _hasSearched = false;
@@ -132,14 +133,22 @@ class _SearchPageState extends State<SearchPage> {
       _searching = true;
       _hasSearched = true;
     });
+    final kw = keyword.trim();
     final results = await DatabaseHelper.searchPoems(
-      keyword.trim(),
+      kw,
       dynastyId: _selectedDynastyId,
       type: _selectedType,
     );
+    // 诗句命中：单独一条一条地看「这个字落在哪句」，是「按字查诗」的核心姿态。
+    // 只在输入足够短（1~4 字）时查 —— 输入一整句时诗词结果已经够准，
+    // 再叠一份诗句列表只是噪音。
+    final wantVerses = kw.runes.length <= 4 && !kw.contains(RegExp(r'\s'));
+    final verses =
+        wantVerses ? await DatabaseHelper.searchVerses(kw, limit: 20) : <VerseHit>[];
     if (mounted) {
       setState(() {
         _results = results;
+        _verseHits = verses;
         _searching = false;
       });
     }
@@ -418,13 +427,18 @@ class _SearchPageState extends State<SearchPage> {
     if (_searching) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_results.isEmpty) {
+    if (_results.isEmpty && _verseHits.isEmpty) {
       return const EmptyState(
         icon: PoemIcons.search,
         title: '未找到相关诗词',
         description: '试试「李白」「月」，或拼音「cqmyg」',
       );
     }
+    final c = ShiciColors.of(context);
+    final verseCount = _verseHits.length;
+    // 诗句区占 verseCount 个条目 + 1 个标题
+    final offset = verseCount == 0 ? 0 : verseCount + 1;
+
     return Column(
       children: [
         Container(
@@ -432,17 +446,27 @@ class _SearchPageState extends State<SearchPage> {
               ShiciSize.pagePadding, 10, ShiciSize.pagePadding, 8),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text('找到 ${_results.length} 首诗词',
-                style: ShiciText.caption.copyWith(
-                    color: ShiciColors.of(context).inkSoft)),
+            child: Text(
+              _results.isEmpty
+                  ? '没有整首匹配的诗，下面是含「${_controller.text.trim()}」的诗句'
+                  : '找到 ${_results.length} 首诗词'
+                      '${verseCount > 0 ? ' · $verseCount 处诗句' : ''}',
+              style: ShiciText.caption.copyWith(color: c.inkSoft),
+            ),
           ),
         ),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: _results.length,
+            itemCount: offset + _results.length,
             itemBuilder: (context, index) {
-              final poem = _results[index];
+              if (verseCount > 0) {
+                if (index == 0) return _verseSectionHeader(c, verseCount);
+                if (index <= verseCount) {
+                  return _verseTile(c, _verseHits[index - 1]);
+                }
+              }
+              final poem = _results[index - offset];
               final keyword = _controller.text.trim();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -464,6 +488,95 @@ class _SearchPageState extends State<SearchPage> {
         ),
       ],
     );
+  }
+
+  /// 诗句区标题：说明这一段的身份，并把「共几处」交代清楚
+  Widget _verseSectionHeader(ShiciColors c, int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+      child: Row(
+        children: <Widget>[
+          PoemIcon(PoemIcons.recite, size: 16, color: c.cinnabar),
+          const SizedBox(width: 8),
+          Text('含「${_controller.text.trim()}」的诗句',
+              style: ShiciText.heading.copyWith(fontSize: 13, color: c.ink)),
+          const SizedBox(width: 6),
+          Text('$count 处',
+              style: ShiciText.caption.copyWith(fontSize: 11, color: c.inkFaint)),
+        ],
+      ),
+    );
+  }
+
+  /// 一条诗句命中：诗句本身（命中词标朱砂）+ 出处
+  Widget _verseTile(ShiciColors c, VerseHit hit) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+              builder: (_) => PoemDetailPage(poemId: hit.poemId)),
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: c.silk,
+            borderRadius: BorderRadius.circular(ShiciSize.rMd),
+            border: Border.all(color: c.line),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _highlighted(
+                hit.verse,
+                _controller.text.trim(),
+                ShiciText.body.copyWith(
+                  fontSize: 15,
+                  height: 1.7,
+                  color: c.ink,
+                ),
+                c,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '——《${hit.title}》'
+                '${(hit.authorName ?? '').isEmpty ? '' : ' · ${hit.authorName}'}',
+                style: ShiciText.caption.copyWith(fontSize: 11, color: c.inkSoft),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 命中词标朱砂。与卡片里的高亮同一套语义：只有颜色，不加底色，
+  /// 免得一屏几十条全都花掉。
+  Widget _highlighted(
+      String text, String keyword, TextStyle style, ShiciColors c) {
+    if (keyword.isEmpty) return Text(text, style: style);
+    final lower = text.toLowerCase();
+    final kw = keyword.toLowerCase();
+    final spans = <TextSpan>[];
+    var cursor = 0;
+    while (true) {
+      final at = lower.indexOf(kw, cursor);
+      if (at < 0) break;
+      if (at > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, at)));
+      }
+      spans.add(TextSpan(
+        text: text.substring(at, at + kw.length),
+        style: TextStyle(color: c.cinnabar, fontWeight: FontWeight.w600),
+      ));
+      cursor = at + kw.length;
+    }
+    if (spans.isEmpty) return Text(text, style: style);
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor)));
+    }
+    return Text.rich(TextSpan(style: style, children: spans));
   }
 
   @override
