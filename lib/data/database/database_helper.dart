@@ -17,7 +17,7 @@ import '../../utils/verse_splitter.dart';
 /// 负责：建表、初始数据加载、DAO 查询
 class DatabaseHelper {
   static const _dbName = 'poetry.db';
-  static const _dbVersion = 10;
+  static const _dbVersion = 11;
 
   static Database? _db;
   static bool _initialized = false;
@@ -377,6 +377,11 @@ class DatabaseHelper {
     // 与 v8「删区间整段重建」不同，这里只**就地更新内容列**并重建分类关联，
     // 不碰 favorites/study_records/study_notes/reading_history —— 用户数据一条不丢。
     if (oldVersion < 10) {
+      await _upgradeV10RefreshPackContent(db, assetReader: assetReader);
+    }
+    // v10→v11: 修复「译文=原文照抄/截取」硬伤。
+    // 部分来自古诗词网/百度汉语的白话译文，无源篇目清空译文（宁缺毋错）。
+    if (oldVersion < 11) {
       await _upgradeV10RefreshPackContent(db, assetReader: assetReader);
     }
   }

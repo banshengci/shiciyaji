@@ -128,6 +128,13 @@ def classify_translation(poem: dict) -> str:
     for other_id, other_body in _CORPUS.items():
         if other_id != pid and body in other_body:
             return "generated"
+    # ③ 译文与原文字符重叠极高且几乎没有现代汉语虚词 —— 文言微调式假译文
+    if own:
+        sa, sb = set(body), set(own)
+        jac = len(sa & sb) / len(sa | sb) if sa and sb else 0.0
+        modern = sum(raw.count(w) for w in ("的", "了", "着", "这", "那", "我", "你"))
+        if jac >= 0.85 and modern / max(len(body), 1) < 0.02:
+            return "generated"
     return "curated"
 
 

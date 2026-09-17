@@ -71,7 +71,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   String? _contentOf(ContentField field, String? builtIn) {
     final own = _overrides[field.name];
     if (own != null && own.trim().isNotEmpty) return own;
-    return builtIn;
+    final v = builtIn?.trim();
+    if (v == null || v.isEmpty) return null;
+    return v;
   }
 
   /// 这一项的等级：本地补写过就算「自己的」，否则交给分级表。

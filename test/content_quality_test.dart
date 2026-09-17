@@ -113,21 +113,35 @@ void main() {
       }
     });
 
-    test('离线包三字段全量精校（内容诚信不变量：无脚本占位、无缺失）', () async {
-      // 2026-09-16 起：离线包译文已逐首人工补写为白话，赏析与创作背景亦全量补全。
-      // 因此三个字段的 generated（脚本生成的说明性补充）与 missing 都应为 0；
-      // 若以后又有人批量灌入占位文本或漏补内容，审计脚本会重新把它们判出，
-      // 这条断言就会失败，逼着先清理/补齐而不是悄悄带病发布。
+    test('离线包译文不再把原文当译文（内容诚信：无脚本占位）', () async {
+      // 2026 修复：对「译文=原文照抄/截取」的硬伤，有免费来源的换成白话译文，
+      // 无来源的清空（宁缺毋错）。因此 generated 必须为 0；
+      // missing 可以 > 0，表示「暂无译文」而不是错误内容。
       final quality = await readJson(ContentQuality.assetPath);
       final counts = quality['counts'] as Map<String, dynamic>;
       expect(counts['total'], 1320);
-      for (final field in ContentField.values) {
+
+      final t = counts['translation'] as Map;
+      expect(t['generated'], 0,
+          reason: '译文仍含原文照抄/占位文本，需重新清理');
+      // 赏析/背景仍应全量精校
+      for (final field in [ContentField.appreciation, ContentField.background]) {
         final c = counts[field.name] as Map;
         expect(c['generated'], 0,
             reason: '${field.name} 仍含脚本生成的占位文本，需重新清理');
         expect(c['missing'], 0,
             reason: '${field.name} 仍有缺失内容，需补齐');
       }
+      // 小学包必须 100% 有译文（已手写/外源补齐）
+      // 通过 missing id 列表交叉验证：10000-12000 不应出现在 translation.missing 里
+      final missingMap =
+          (quality['missing'] as Map)['translation'] as List<dynamic>;
+      final xiaoxueMissing = missingMap
+          .map((e) => e as int)
+          .where((id) => id >= 10000 && id < 12000)
+          .toList();
+      expect(xiaoxueMissing, isEmpty,
+          reason: '小学包译文不应缺失');
     });
   });
 
@@ -148,7 +162,7 @@ void main() {
       expect(ContentQuality.isLoaded, isTrue);
       expect(ContentQuality.totalPoems, 1320);
 
-      // 译文已 100% 精校：任取一首离线包诗，译文应为 curated
+      // 名篇译文应为 curated（外源或手写）
       expect(ContentQuality.levelOf(20041, ContentField.translation),
           ContentLevel.curated);
       // 预置 1 号（静夜思）三字段均为精校（人工撰写，阴性对照）
@@ -159,9 +173,9 @@ void main() {
       expect(ContentQuality.levelOf(1, ContentField.background),
           ContentLevel.curated);
 
-      // 离线包赏析/背景已全量补齐，分级表里不再有 missing 项，
-      // 「缺失态可分」这一路径由上面的「全量精校」不变量覆盖；
-      // 这里只钉住「已加载时按 id 能正确判为精校」。
+      // 小学包《玉阶怨》应为精校白话（手写修复）
+      expect(ContentQuality.levelOf(10091, ContentField.translation),
+          ContentLevel.curated);
     });
 
     test('三级都有可读文案，界面上不会出现空白徽标', () {

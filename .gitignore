@@ -103,3 +103,8 @@ assets/data/poems_v2.json
 
 # 数据文件的本地备份
 assets/data/*.bak
+
+tools/gushici_cache/
+tools/baidu_hanyu_cache/
+tools/_fetch_log.txt
+
