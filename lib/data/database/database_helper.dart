@@ -1466,6 +1466,69 @@ class DatabaseHelper {
     return results.map(Poem.fromMap).toList();
   }
 
+  /// 相关篇目：同作者其他作品 + 同题（标题主干相同），排除自身。
+  ///
+  /// 用于详情页「相关篇目」对比入口；上限 [limit] 首，同作者优先。
+  static Future<List<Poem>> getRelatedPoems(int poemId,
+      {int limit = 8}) async {
+    final db = await database();
+    final base = await getPoemById(poemId);
+    if (base == null) return const [];
+    final authorId = base.authorId;
+    final titleCore = base.title
+        .replaceAll(RegExp(r'[·・].*$'), '')
+        .replaceAll(RegExp(r'其[0-9一二三四五六七八九十]+$'), '')
+        .trim();
+
+    final byAuthor = <Poem>[];
+    if (authorId != null) {
+      final rows = await db.rawQuery('''
+        SELECT p.*, a.name AS author_name, d.name AS dynasty_name
+        FROM poems p
+        LEFT JOIN authors a ON p.author_id = a.id
+        LEFT JOIN dynasties d ON p.dynasty_id = d.id
+        WHERE p.author_id = ? AND p.id != ?
+        ORDER BY p.sort_order, p.id
+        LIMIT ?
+      ''', [authorId, poemId, limit]);
+      byAuthor.addAll(rows.map(Poem.fromMap));
+    }
+
+    final seen = byAuthor.map((p) => p.id).toSet()..add(poemId);
+    final byTitle = <Poem>[];
+    if (titleCore.length >= 2) {
+      final rows = await db.rawQuery('''
+        SELECT p.*, a.name AS author_name, d.name AS dynasty_name
+        FROM poems p
+        LEFT JOIN authors a ON p.author_id = a.id
+        LEFT JOIN dynasties d ON p.dynasty_id = d.id
+        WHERE p.id != ? AND (p.title LIKE ? OR p.title LIKE ?)
+        ORDER BY p.sort_order, p.id
+        LIMIT ?
+      ''', [poemId, '$titleCore%', '%$titleCore%', limit]);
+      for (final r in rows) {
+        final p = Poem.fromMap(r);
+        if (seen.add(p.id)) byTitle.add(p);
+      }
+    }
+
+    final out = [...byAuthor, ...byTitle];
+    return out.length > limit ? out.sublist(0, limit) : out;
+  }
+
+  /// 作者作品：按 sort_order 作简易时间线
+  static Future<List<Poem>> getPoemsByAuthorSorted(int authorId) async {
+    final poems = await getPoemsByAuthor(authorId);
+    final sorted = [...poems]
+      ..sort((a, b) {
+        final sa = a.sortOrder;
+        final sb = b.sortOrder;
+        if (sa != sb) return sa.compareTo(sb);
+        return a.id.compareTo(b.id);
+      });
+    return sorted;
+  }
+
   // ---- 收藏夹管理 ----
 
   /// 获取所有收藏夹（含诗词数量，支持空夹）

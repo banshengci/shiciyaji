@@ -274,6 +274,17 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: () => _openCard(poem),
+                        child: Text(
+                          '导出日签 ›',
+                          style: ShiciText.caption.copyWith(
+                            fontSize: 11,
+                            color: c.onDeep.withOpacity(0.68),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),

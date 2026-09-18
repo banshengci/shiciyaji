@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'listen_stats.dart';
 import 'tts_service.dart';
 
 /// 听诗队列里的一首
@@ -79,6 +80,7 @@ class TtsPlayQueue extends ChangeNotifier {
     _playing = true;
     _token++;
     _notify();
+    unawaited(ListenStats.recordSessionStart());
     unawaited(_run(_token));
   }
 
@@ -92,6 +94,9 @@ class TtsPlayQueue extends ChangeNotifier {
         await _tts.waitPlayback(
           timeout: const Duration(minutes: 3),
         );
+        if (token == _token && _playing) {
+          unawaited(ListenStats.recordPoemHeard());
+        }
       } catch (_) {
         // 单篇失败不掐断整队
       }

@@ -6,6 +6,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/poem_card_styles.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
+import '../../core/tts_play_queue.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import 'poem_detail_page.dart';
@@ -66,6 +67,27 @@ class _FavoritesPageState extends State<FavoritesPage> {
         _loading = false;
       });
     }
+  }
+
+  /// 连播当前可见收藏
+  Future<void> _listenFavorites() async {
+    final list = _visible;
+    if (list.isEmpty) return;
+    final label = _selectedCollection ?? '我的收藏';
+    await TtsPlayQueue.instance.start(
+      [
+        for (final p in list)
+          TtsQueueItem(poemId: p.id, title: p.title, content: p.content),
+      ],
+      label: label,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('开始连播「$label」${list.length} 首'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   /// 当前可见列表：收藏夹已在 SQL 层过滤，朝代在前端筛（收藏量级小）
@@ -218,6 +240,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
               ),
             ),
             const Spacer(),
+            IconButton(
+              tooltip: '连续听收藏',
+              icon: Icon(Icons.headphones, size: 20, color: c.indigo),
+              onPressed:
+                  _favorites.isEmpty ? null : _listenFavorites,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
             IconButton(
               tooltip: '卡片样式：${_cardStyle.label}',
               icon: PoemIcon(PoemIcons.sort, size: 18, color: c.inkSoft),

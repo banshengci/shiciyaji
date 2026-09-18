@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/poem_icon.dart';
 import '../../core/s2t_converter.dart';
 import '../../core/design_tokens.dart';
+import '../../core/listen_stats.dart';
+import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 
@@ -267,6 +269,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
       _finished = true;
       _timerActive = false;
     });
+    FlyingFlowerRank.recordGame(_score);
   }
 
   @override
@@ -575,6 +578,7 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
     final c = ShiciColors.of(context);
     final total = _correct + _wrong;
     final rate = total > 0 ? (_correct / total * 100).round() : 0;
+    final rank = FlyingFlowerRank.rankOfScore(_score);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -586,11 +590,24 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
               size: 64,
               color: _score > 100 ? c.gamboge : c.cinnabar,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: c.gamboge.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '本局段位 · $rank',
+                style: ShiciText.caption
+                    .copyWith(fontSize: 12, color: c.ink, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 8),
             Text('飞花令结束',
                 style: theme.textTheme.headlineSmall
                     ?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             // 得分
             Text(
               '$_score',

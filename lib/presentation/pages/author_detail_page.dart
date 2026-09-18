@@ -44,7 +44,9 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final author = await DatabaseHelper.getAuthorById(widget.authorId);
-    final poems = await DatabaseHelper.getPoemsByAuthor(widget.authorId);
+    // 时间线：按 sort_order 作简易编年
+    final poems =
+        await DatabaseHelper.getPoemsByAuthorSorted(widget.authorId);
     String? dynastyName;
     if (author?.dynastyId != null) {
       final dynasties = await DatabaseHelper.getAllDynasties();
@@ -101,12 +103,18 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
                       children: [
                         PoemIcon(PoemIcons.library, size: 18, color: c.pine),
                         const SizedBox(width: 6),
-                        Text('作品 ${_poems.length} 首',
+                        Text('作品年表 · ${_poems.length} 首',
                             style: theme.textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
+                    Text(
+                      '按库内编次排列（近似阅读时间线）',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: c.inkSoft),
+                    ),
+                    const SizedBox(height: 12),
                     if (_poems.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 24),
@@ -115,7 +123,10 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
                             textAlign: TextAlign.center),
                       )
                     else
-                      ..._poems.map((p) => _buildPoemTile(theme, p)),
+                      ..._poems.asMap().entries.map(
+                            (e) => _buildTimelineTile(
+                                theme, e.key + 1, e.value),
+                          ),
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -203,6 +214,48 @@ class _AuthorDetailPageState extends State<AuthorDetailPage> {
           _t(_author!.bio!),
           style: theme.textTheme.bodyMedium?.copyWith(height: 1.8),
         ),
+      ],
+    );
+  }
+
+  /// 时间线条目：左侧序号 + 作品卡
+  Widget _buildTimelineTile(ThemeData theme, int index, Poem poem) {
+    final c = ShiciColors.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 36,
+          child: Column(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: c.cinnabar.withOpacity(0.12),
+                  border: Border.all(color: c.cinnabar.withOpacity(0.45)),
+                ),
+                child: Text(
+                  '$index',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: c.cinnabar,
+                  ),
+                ),
+              ),
+              if (index < _poems.length)
+                Container(
+                  width: 1,
+                  height: 18,
+                  color: c.line,
+                ),
+            ],
+          ),
+        ),
+        Expanded(child: _buildPoemTile(theme, poem)),
       ],
     );
   }

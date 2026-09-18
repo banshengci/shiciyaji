@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/design_tokens.dart';
+import '../../core/listen_stats.dart';
 import '../../core/report_builder.dart';
 import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
@@ -32,6 +33,8 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
   bool _loading = true;
   bool _sharing = false;
   MonthlyReport? _report;
+  int _monthListenPoems = 0;
+  int _monthListenSessions = 0;
 
   // 三个数据源只读一次，切月份时本地重算 —— 月报是纯函数，切月不必再查库
   List<StudyRecord> _records = const [];
@@ -53,11 +56,16 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     final records = await DatabaseHelper.getStudyRecords();
     final notes = await DatabaseHelper.getAllNotes();
     final poems = await DatabaseHelper.getAllPoems();
+    final month = DateTime(_year, _month);
+    final listenPoems = await ListenStats.monthPoems(month);
+    final listenSessions = await ListenStats.monthSessions(month);
     if (!mounted) return;
     setState(() {
       _records = records;
       _notes = notes;
       _poemById = {for (final p in poems) p.id: p};
+      _monthListenPoems = listenPoems;
+      _monthListenSessions = listenSessions;
       _rebuild();
       _loading = false;
     });
@@ -105,7 +113,9 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
       fileName: 'study_report_${_year}_$_month.png',
       subject: '诗词雅集 · ${_report!.label}学习月报',
       text: '${_report!.label}：学过 ${_report!.studiedCount} 首、'
-          '打卡 ${_report!.studyDays} 天 —— 来自「诗词雅集」',
+          '打卡 ${_report!.studyDays} 天'
+          '${_monthListenPoems > 0 ? '、听读 $_monthListenPoems 篇' : ''}'
+          ' —— 来自「诗词雅集」',
       shareOrigin: origin,
     );
     if (!mounted) return;
@@ -139,6 +149,22 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
           : Column(
               children: <Widget>[
                 _monthBar(c),
+                if (_monthListenPoems > 0 || _monthListenSessions > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.headphones, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '听读：$_monthListenSessions 次 · $_monthListenPoems 篇',
+                            style: ShiciText.caption.copyWith(color: c.inkSoft),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),

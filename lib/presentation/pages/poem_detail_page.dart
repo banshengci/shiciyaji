@@ -18,6 +18,7 @@ import '../widgets/poem_icon.dart';
 import '../widgets/poem_parallel_card.dart';
 import '../widgets/poem_vertical_body.dart';
 import '../../core/tts_play_queue.dart';
+import 'listen_write_page.dart';
 import '../widgets/note_dialogs.dart'
     show runEditFlow, runDeleteFlow, EditOutcome;
 import 'author_detail_page.dart';
@@ -109,6 +110,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   final _noteFocusNode = FocusNode();
   List<StudyNote> _notes = [];
 
+  /// 相关篇目（同作者 / 同题）
+  List<Poem> _related = const [];
+
   @override
   void initState() {
     super.initState();
@@ -166,6 +170,10 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
     if (poem != null) {
       await DatabaseHelper.addReadingHistory(poem.id);
     }
+    List<Poem> related = const [];
+    if (poem != null) {
+      related = await DatabaseHelper.getRelatedPoems(poem.id, limit: 6);
+    }
     // 内容分级表与本地补写：都在首帧前读完，否则会先渲染没有徽标的版本再跳变
     await ContentQuality.load();
     final overrides = await DatabaseHelper.getPoemOverrides(widget.poemId);
@@ -177,6 +185,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
         _prevId = prevId;
         _nextId = nextId;
         _notes = notes;
+        _related = related;
         _overrides = overrides;
         _loading = false;
       });
@@ -985,6 +994,11 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                         ),
                       ],
                       const SizedBox(height: 40),
+                      // 相关篇目：同作者 / 同题对比入口
+                      if (!_immersive && _related.isNotEmpty) ...[
+                        _buildRelatedSection(theme),
+                        const SizedBox(height: 24),
+                      ],
                       // 底部操作栏
                       if (!_immersive) _buildActionBar(theme),
                       const SizedBox(height: 20),
@@ -1298,6 +1312,90 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
       _isOwnOverride(field) ? raw : _t(raw);
 
   /// 底部操作条：一个主按钮 + 两个圆形次按钮（对齐画布）
+  /// 相关篇目：同作者其他作品 / 同题 —— 方便对比读
+  Widget _buildRelatedSection(ThemeData theme) {
+    final c = ShiciColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            PoemIcon(PoemIcons.library, size: 16, color: c.indigo),
+            const SizedBox(width: 6),
+            Text(
+              '相关篇目',
+              style: ShiciText.heading.copyWith(
+                fontSize: 14,
+                color: c.ink,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '同作者 / 同题，可对比着读',
+              style: ShiciText.caption
+                  .copyWith(fontSize: 11, color: c.inkFaint),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 72,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _related.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final p = _related[i];
+              return InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _navigateTo(p.id),
+                child: Container(
+                  width: 148,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: c.silk,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: c.line),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _t(p.title),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: _fontFamily,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: c.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_t(p.authorName ?? '')} · ${_t(p.dynastyName ?? '')}',
+                        style:
+                            ShiciText.caption.copyWith(fontSize: 10, color: c.inkSoft),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _t((p.content.split('\n').first)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            ShiciText.caption.copyWith(fontSize: 10, color: c.inkFaint),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildActionBar(ThemeData theme) {
     return Row(
       children: [
@@ -1372,6 +1470,19 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
               onTap: () {
                 Navigator.of(ctx).pop();
                 _listenFromHere();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.hearing, color: c.ink, size: 22),
+              title: Text('听写默写',
+                  style: ShiciText.heading.copyWith(color: c.ink)),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                final poem = _poem;
+                if (poem == null) return;
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ListenWritePage(poem: poem),
+                ));
               },
             ),
             ListTile(
