@@ -17,6 +17,7 @@ import '../../utils/verse_splitter.dart';
 import '../widgets/poem_icon.dart';
 import '../widgets/poem_parallel_card.dart';
 import '../widgets/poem_vertical_body.dart';
+import '../../core/tts_play_queue.dart';
 import '../widgets/note_dialogs.dart'
     show runEditFlow, runDeleteFlow, EditOutcome;
 import 'author_detail_page.dart';
@@ -1362,6 +1363,18 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
               },
             ),
             ListTile(
+              leading: Icon(Icons.headphones, color: c.ink, size: 22),
+              title: Text('从本篇起连播',
+                  style: ShiciText.heading.copyWith(color: c.ink)),
+              subtitle: Text('顺库连续听后续约 10 首',
+                  style: ShiciText.caption
+                      .copyWith(fontSize: 11, color: c.inkSoft)),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _listenFromHere();
+              },
+            ),
+            ListTile(
               leading: Icon(Icons.copy, color: c.ink, size: 22),
               title: Text('复制全文',
                   style: ShiciText.heading.copyWith(color: c.ink)),
@@ -1384,6 +1397,36 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => RecallQuizPage(title: '背诵 · ${poem.title}', poemIds: <int>[poem.id]),
     ));
+  }
+
+  /// 从本篇起连播：顺库取当前 + 后续若干首
+  Future<void> _listenFromHere() async {
+    final start = _poem;
+    if (start == null) return;
+    final poems = <Poem>[start];
+    var id = start.id;
+    for (var i = 0; i < 9; i++) {
+      final nextId = await DatabaseHelper.getNextPoemId(id);
+      if (nextId == null) break;
+      final next = await DatabaseHelper.getPoemById(nextId);
+      if (next == null) break;
+      poems.add(next);
+      id = next.id;
+    }
+    await TtsPlayQueue.instance.start(
+      [
+        for (final p in poems)
+          TtsQueueItem(poemId: p.id, title: _t(p.title), content: _t(p.content)),
+      ],
+      label: '附近篇目',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('开始连播 ${poems.length} 首（可切到其他页继续听）'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   /// 笔记：滚到笔记区并把焦点交给输入框

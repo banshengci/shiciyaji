@@ -80,8 +80,24 @@ class TtsService {
     // 速率映射：0.5x -> 0.0, 1.0x -> 0.5, 2.0x -> 1.0
     final ttsRate = (_rate - 0.5) * 1.0; // 0.5-2.0 映射到 0.0-1.5
     await _tts.setSpeechRate(ttsRate.clamp(0.0, 1.0));
+    _utteranceDone = Completer<void>();
     await _tts.speak(cleanText);
     _isPlaying = true;
+  }
+
+  /// 等待当前 [speak] / 逐句句读完（或超时、出错时放行）。
+  ///
+  /// 连播队列靠它串起「上一篇念完再念下一篇」；个别平台不回调 completion 时
+  /// 走超时，避免整队卡死。
+  Future<void> waitPlayback(
+      {Duration timeout = const Duration(minutes: 3)}) async {
+    final done = _utteranceDone;
+    if (done == null || done.isCompleted) return;
+    try {
+      await done.future.timeout(timeout);
+    } on TimeoutException {
+      // 超时视为本句结束，让调用方推进
+    }
   }
 
   /// 逐句朗读 [verses]（由 `splitVerses` 断句得到）。

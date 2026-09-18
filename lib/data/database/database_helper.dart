@@ -1885,6 +1885,48 @@ class DatabaseHelper {
         await idsByKeywords(['除夜', '除夕', '元日', '新年']));
     await ensure('咏雪', '忽如一夜春风来', await idsByKeywords(['雪']));
     await ensure('咏梅', '疏影横斜水清浅', await idsByKeywords(['梅']));
+
+    // ── 教材同步单元（按小学包 sort_order 切段 + 必背主题）──
+    Future<List<int>> idsByPackSlice(int idStart, int idEnd,
+        {required int limit, required int offset}) async {
+      final rows = await db.rawQuery('''
+        SELECT id FROM poems
+        WHERE id >= ? AND id < ?
+        ORDER BY sort_order, id
+        LIMIT ? OFFSET ?
+      ''', [idStart, idEnd, limit, offset]);
+      return rows.map((e) => e['id'] as int).toList();
+    }
+
+    Future<List<int>> idsByCategoryAndKeywords(
+        String categoryName, List<String> keywords) async {
+      final cat = await idsByCategory(categoryName);
+      if (cat.isEmpty) return const [];
+      final kw = await idsByKeywords(keywords);
+      final kwSet = kw.toSet();
+      return cat.where(kwSet.contains).toList();
+    }
+
+    const unitSize = 25;
+    for (var unit = 0; unit < 4; unit++) {
+      final slice = await idsByPackSlice(
+        10000,
+        12000,
+        limit: unitSize,
+        offset: unit * unitSize,
+      );
+      await ensure(
+        '教材同步 · 小学第${unit + 1}单元',
+        '按小学必背包顺序整理的第${unit + 1}课组（约 $unitSize 首）',
+        slice,
+      );
+    }
+    await ensure('教材同步 · 必背写景', '山水春江，入选必背的写景篇',
+        await idsByCategoryAndKeywords(
+            '必背', ['山', '江', '湖', '春', '花', '月', '雪', '河']));
+    await ensure('教材同步 · 必背抒情', '思乡送别，入选必背的抒情篇',
+        await idsByCategoryAndKeywords(
+            '必背', ['思', '别', '送', '归', '忆', '愁', '乡']));
   }
 
   // ============ DAO: 阅读历史 ============

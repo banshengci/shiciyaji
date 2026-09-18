@@ -17,6 +17,7 @@ import 'presentation/pages/splash_page.dart';
 import 'core/achievement_service.dart';
 import 'core/ui_scale.dart';
 import 'data/models/achievement.dart';
+import 'presentation/widgets/tts_queue_bar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -176,7 +177,13 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_currentIndex],
+      body: Column(
+        children: <Widget>[
+          Expanded(child: _pages[_currentIndex]),
+          // 听诗连播迷你条：有队列时贴在导航栏上方
+          const TtsQueueBar(),
+        ],
+      ),
       bottomNavigationBar: CapsuleNavBar(
         currentIndex: _currentIndex,
         onTap: _onSelect,

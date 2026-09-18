@@ -6,6 +6,7 @@ import '../widgets/empty_state.dart';
 import '../../core/design_tokens.dart';
 import '../../core/plan_scheduler.dart';
 import '../../core/theme.dart';
+import '../../core/tts_play_queue.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/models.dart';
 import 'poem_detail_page.dart';
@@ -75,6 +76,28 @@ class _StudyPlansPageState extends State<StudyPlansPage> {
       MaterialPageRoute(builder: (_) => const CreatePlanPage()),
     );
     if (result == true) await _loadData();
+  }
+
+  /// 用计划篇目开连播（睡前听 / 通勤听）
+  Future<void> _listenPlan(StudyPlan plan) async {
+    if (plan.poemIds.isEmpty) return;
+    final poems = await DatabaseHelper.getPoemsByIds(plan.poemIds);
+    if (poems.isEmpty || !mounted) return;
+    final items = poems
+        .map((p) => TtsQueueItem(
+              poemId: p.id,
+              title: p.title,
+              content: p.content,
+            ))
+        .toList(growable: false);
+    await TtsPlayQueue.instance.start(items, label: plan.name);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('开始连播「${plan.name}」${items.length} 首'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -199,6 +222,14 @@ class _StudyPlansPageState extends State<StudyPlansPage> {
                     color: c.cinnabar,
                   ),
                 ),
+              ),
+              IconButton(
+                tooltip: '连续听本计划',
+                visualDensity: VisualDensity.compact,
+                onPressed: plan.poemIds.isEmpty
+                    ? null
+                    : () => _listenPlan(plan),
+                icon: Icon(Icons.headphones, size: 20, color: c.indigo),
               ),
               // 配了每日定量的计划多一枚「今日」标记，让「今天学几首」一眼可见
               if (plan.dailyTarget != null) ...<Widget>[
