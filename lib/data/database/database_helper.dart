@@ -1825,6 +1825,26 @@ class DatabaseHelper {
       return rows.map((e) => e['id'] as int).toList();
     }
 
+    /// 标题/正文含关键词（任一命中）的诗词 id —— 用于节令专题
+    Future<List<int>> idsByKeywords(List<String> keywords) async {
+      if (keywords.isEmpty) return const [];
+      final args = <String>[];
+      final clauses = <String>[];
+      for (final k in keywords) {
+        clauses.add('title LIKE ? OR content LIKE ?');
+        args
+          ..add('%$k%')
+          ..add('%$k%');
+      }
+      final rows = await db.rawQuery('''
+        SELECT DISTINCT p.id FROM poems p
+        WHERE ${clauses.join(' OR ')}
+        ORDER BY p.sort_order, p.id
+        LIMIT 30
+      ''', args);
+      return rows.map((e) => e['id'] as int).toList();
+    }
+
     Future<void> ensure(
         String name, String description, List<int> ids) async {
       if (ids.isEmpty) {
@@ -1848,6 +1868,23 @@ class DatabaseHelper {
         await idsByDynasty('宋', 15));
     await ensure('小学必背', '小学生必背古诗词',
         await idsByCategory('必背'));
+
+    // ── 节气 / 节日 / 题材专题（借鉴热门 App 的场景化文库）──
+    await ensure('节日诗选', '节令佳节相关篇目', await idsByCategory('节日'));
+    await ensure('边塞壮歌', '金戈铁马，家国关山', await idsByCategory('边塞'));
+    await ensure('山水行旅', '登临远望，江山如画', await idsByCategory('山水'));
+    await ensure('田园清趣', '桑麻鸡犬，篱下悠然', await idsByCategory('田园'));
+    await ensure('送别诗笺', '长亭更尽，故人西出', await idsByCategory('送别'));
+    await ensure('思乡月夜', '望月怀远，故园千里', await idsByCategory('思乡'));
+    await ensure('清明', '清明时节雨纷纷', await idsByKeywords(['清明']));
+    await ensure('中秋赏月', '月到中秋分外明',
+        await idsByKeywords(['中秋', '望月', '月夜']));
+    await ensure('重阳登高', '遍插茱萸少一人',
+        await idsByKeywords(['重阳', '九日']));
+    await ensure('除夕与元日', '爆竹声中一岁除',
+        await idsByKeywords(['除夜', '除夕', '元日', '新年']));
+    await ensure('咏雪', '忽如一夜春风来', await idsByKeywords(['雪']));
+    await ensure('咏梅', '疏影横斜水清浅', await idsByKeywords(['梅']));
   }
 
   // ============ DAO: 阅读历史 ============

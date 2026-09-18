@@ -16,6 +16,7 @@ import '../../utils/pinyin_helper.dart';
 import '../../utils/verse_splitter.dart';
 import '../widgets/poem_icon.dart';
 import '../widgets/poem_parallel_card.dart';
+import '../widgets/poem_vertical_body.dart';
 import '../widgets/note_dialogs.dart'
     show runEditFlow, runDeleteFlow, EditOutcome;
 import 'author_detail_page.dart';
@@ -134,6 +135,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   /// 沉浸模式优先渲染「只有诗」，所以那里不叠对照卡。
   bool get _parallel =>
       _readingMode == PoemReadingMode.parallel && !_immersive;
+
+  /// 竖排读法：古籍式原文；沉浸模式下也优先竖排。
+  bool get _vertical => _readingMode == PoemReadingMode.vertical;
 
   Future<void> _pickReadingMode() async {
     final picked =
@@ -702,6 +706,56 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                             showHeader: false,
                           ),
                         ),
+                      ] else if (_vertical) ...[
+                        PoemVerticalShell(
+                          footnote: const PoemVerticalHint(),
+                          child: Column(
+                            children: <Widget>[
+                              PoemVerticalColophon(
+                                title: _t(poem.title),
+                                authorLine: _authorPlainText(poem),
+                                fontSize: _fontSize,
+                                fontFamily: _fontFamily,
+                                ink: _immersive
+                                    ? Colors.white
+                                    : theme.colorScheme.onSurface,
+                                inkSoft: _immersive
+                                    ? Colors.white70
+                                    : theme.colorScheme.outline,
+                              ),
+                              const SizedBox(height: 20),
+                              PoemVerticalBody(
+                                content: _t(poem.content),
+                                fontSize: _fontSize,
+                                fontFamily: _fontFamily,
+                                textColor: _immersive
+                                    ? Colors.white
+                                    : theme.colorScheme.onSurface,
+                                highlightColor: pal.cinnabar,
+                                highlightLine:
+                                    _following ? _verseIndex : null,
+                                onCharTap:
+                                    _immersive ? null : _lookupChar,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _buildDivider(theme),
+                        if (!_immersive) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () =>
+                                  setState(() => _immersive = true),
+                              icon: const PoemIcon(PoemIcons.immersive,
+                                  size: 16),
+                              label: const Text('沉浸阅读',
+                                  style: TextStyle(fontSize: 12)),
+                            ),
+                          ),
+                        ],
                       ] else ...[
                         // 诗体：居中、行距 2.0。
                         // 手势分工：轻点**汉字**查读音与用例（见 _lookupChar），
@@ -991,6 +1045,13 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   }
 
   /// 作者行：小圆印 + 朝代 · 作者 · 体裁
+  /// 竖排题签用的作者行纯文本：「朝代 · 作者」
+  String _authorPlainText(Poem poem) {
+    final dyn = (poem.dynastyName ?? '').trim();
+    final name = (poem.authorName ?? '佚名').trim();
+    return dyn.isEmpty ? _t(name) : _t('$dyn · $name');
+  }
+
   Widget _authorLine(Poem poem) {
     final c = ShiciColors.of(context);
     final isLight = !_immersive;

@@ -14,7 +14,8 @@ import 'poem_icon.dart';
 /// [parallel] 是 05 卡：逐联配译文，赏析与注释随文附在末尾。
 enum PoemReadingMode {
   plain(label: '通读', hint: '原文整首居上，注释 / 译文 / 赏析分节展开'),
-  parallel(label: '对照', hint: '逐联配译文，赏析随文附上');
+  parallel(label: '对照', hint: '逐联配译文，赏析随文附上'),
+  vertical(label: '竖排', hint: '古籍式自右向左竖排原文，沉浸读原作');
 
   const PoemReadingMode({required this.label, required this.hint});
 
@@ -81,7 +82,7 @@ Future<PoemReadingMode?> showPoemReadingModePicker(
               ],
             ),
             Text(
-              '同一首诗，两种读法 —— 选定后立即生效，并记住你的偏好。',
+              '同一首诗，三种读法 —— 选定后立即生效，并记住你的偏好。',
               style: ShiciText.caption.copyWith(color: c.inkSoft),
             ),
             const SizedBox(height: 14),
