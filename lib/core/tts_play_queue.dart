@@ -80,8 +80,16 @@ class TtsPlayQueue extends ChangeNotifier {
     _playing = true;
     _token++;
     _notify();
-    unawaited(ListenStats.recordSessionStart());
+    unawaited(_safeRecord(ListenStats.recordSessionStart));
     unawaited(_run(_token));
+  }
+
+  static Future<void> _safeRecord(Future<void> Function() op) async {
+    try {
+      await op();
+    } catch (_) {
+      // 统计失败不影响听诗（测试环境可能没有 shared_preferences 插件）
+    }
   }
 
   Future<void> _run(int token) async {
@@ -95,7 +103,7 @@ class TtsPlayQueue extends ChangeNotifier {
           timeout: const Duration(minutes: 3),
         );
         if (token == _token && _playing) {
-          unawaited(ListenStats.recordPoemHeard());
+          unawaited(_safeRecord(ListenStats.recordPoemHeard));
         }
       } catch (_) {
         // 单篇失败不掐断整队

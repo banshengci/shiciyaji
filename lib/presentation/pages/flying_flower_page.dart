@@ -269,7 +269,8 @@ class _FlyingFlowerPageState extends State<FlyingFlowerPage>
       _finished = true;
       _timerActive = false;
     });
-    FlyingFlowerRank.recordGame(_score);
+    // 段位统计失败不影响结算
+    FlyingFlowerRank.recordGame(_score).catchError((_) {});
   }
 
   @override
