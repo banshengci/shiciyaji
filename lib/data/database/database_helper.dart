@@ -9,6 +9,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart' as ffi;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/models.dart';
+import '../../core/streak_guard.dart';
 import '../../core/s2t_converter.dart';
 import '../../utils/pinyin_helper.dart';
 import '../../utils/verse_splitter.dart';
@@ -1825,38 +1826,204 @@ class DatabaseHelper {
   }
 
   static Future<int> getStreakDays() async {
+    final studied = await getStudiedDateSet();
+    final covered = await _readCoveredDates();
+    return StreakGuard.currentStreak(
+      studied: studied,
+      covered: covered,
+      today: DateTime.now(),
+    );
+  }
+
+  /// 所有「真实打卡」日期（study_records 去重），归一化到「天」。
+  ///
+  /// 供连胜计算与覆盖判定复用；不混入冻结 / 补签日，后者单独由
+  /// [getStreakGuardState] 提供。
+  static Future<Set<DateTime>> getStudiedDateSet() async {
     final db = await database();
-    final results = await db.rawQuery('''
-      SELECT DISTINCT study_date FROM study_records ORDER BY study_date DESC
-    ''');
-    if (results.isEmpty) return 0;
-    int streak = 0;
-    var expected = DateTime.now();
+    final results = await db.rawQuery(
+      'SELECT DISTINCT study_date FROM study_records',
+    );
+    final set = <DateTime>{};
     for (final row in results) {
-      final dateStr = row['study_date'] as String;
-      final date = DateTime.tryParse(dateStr);
-      if (date == null) continue;
-      if (date.year == expected.year &&
-          date.month == expected.month &&
-          date.day == expected.day) {
-        streak++;
-        expected = expected.subtract(const Duration(days: 1));
-      } else if (streak == 0) {
-        // 今天没学，但昨天学了
-        final yesterday = expected.subtract(const Duration(days: 1));
-        if (date.year == yesterday.year &&
-            date.month == yesterday.month &&
-            date.day == yesterday.day) {
-          streak++;
-          expected = yesterday.subtract(const Duration(days: 1));
-        } else {
-          break;
-        }
-      } else {
-        break;
+      final date = DateTime.tryParse(row['study_date'] as String);
+      if (date != null) set.add(StreakGuard.dayOnly(date));
+    }
+    return set;
+  }
+
+  // ============ 打卡韧性（连胜冻结 / 补签卡）============
+  //
+  // 存储用 SharedPreferences（键名 streak_freezes / streak_repairs /
+  // streak_repair_cards / streak_granted_milestones）；冻结 / 补签只参与连续天数
+  // 统计，绝不写入 study_records —— 不伪造学习记录。
+
+  static const String _kFreezes = 'streak_freezes';
+  static const String _kRepairs = 'streak_repairs';
+  static const String _kRepairCards = 'streak_repair_cards';
+  static const String _kGranted = 'streak_granted_milestones';
+
+  /// 把 'yyyy-MM-dd' 逗号串解析成日期集合（忽略无法解析的项）。
+  static Set<DateTime> _parseDateList(String? raw) {
+    final set = <DateTime>{};
+    if (raw == null || raw.trim().isEmpty) return set;
+    for (final part in raw.split(',')) {
+      final s = part.trim();
+      if (s.isEmpty) continue;
+      final d = DateTime.tryParse(s);
+      if (d != null) set.add(StreakGuard.dayOnly(d));
+    }
+    return set;
+  }
+
+  /// 日期集合序列化成 'yyyy-MM-dd' 逗号串。
+  static String _formatDateList(Set<DateTime> dates) => dates
+      .map(
+        (d) =>
+            '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+            '${d.day.toString().padLeft(2, '0')}',
+      )
+      .join(',');
+
+  /// 读取已覆盖（冻结 ∪ 补签）日期集合。
+  ///
+  /// 包裹 try/catch：在极少数未初始化 SharedPreferences 的环境（如某些纯 DB
+  /// 单测）下降级为空集合，保证连续天数计算不被外部依赖拖垮 —— 覆盖为空时
+  /// 行为与改造前完全一致。
+  static Future<Set<DateTime>> _readCoveredDates() async {
+    try {
+      final state = await getStreakGuardState();
+      return state.covered;
+    } catch (_) {
+      return const <DateTime>{};
+    }
+  }
+
+  /// 读取连胜守护持久化状态（冻结日 / 补签日 / 补签卡存量 / 已发放里程碑）。
+  ///
+  /// 任何读取异常都降级为默认状态（开局 3 张补签卡）。
+  static Future<StreakGuardState> getStreakGuardState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final frozen = _parseDateList(prefs.getString(_kFreezes));
+      final repaired = _parseDateList(prefs.getString(_kRepairs));
+      final cards = prefs.getInt(_kRepairCards) ?? StreakGuard.initialRepairCards;
+      final granted = prefs.getString(_kGranted)
+              ?.split(',')
+              .where((e) => e.trim().isNotEmpty)
+              .map((e) => e.trim())
+              .toSet() ??
+          const <String>{};
+      return StreakGuardState(
+        frozen: frozen,
+        repaired: repaired,
+        repairCards: cards,
+        grantedMilestones: granted,
+      );
+    } catch (_) {
+      return const StreakGuardState();
+    }
+  }
+
+  /// 覆盖某一天（冻结或补签）。
+  ///
+  /// [useFreeze] = true 走月度冻结额度（每月 [StreakGuard.freezesPerMonth] 次），
+  /// false 走补签卡（消耗 1 张）。仅当用户显式操作、该日确为空档、且额度充足时
+  /// 成功；否则返回 [CoverDayResult.success] = false 并附原因，**不改动任何状态**。
+  static Future<CoverDayResult> coverDay(
+    DateTime day, {
+    required bool useFreeze,
+  }) async {
+    final today = DateTime.now();
+    final studied = await getStudiedDateSet();
+    final state = await getStreakGuardState();
+    final d = StreakGuard.dayOnly(day);
+
+    // 先校验「这一天能不能覆盖」（与额度无关）。
+    if (!StreakGuard.canCover(
+      day: d,
+      studied: studied,
+      covered: state.covered,
+      today: today,
+    )) {
+      if (!d.isBefore(StreakGuard.dayOnly(today))) {
+        return const CoverDayResult.failure('不能覆盖今天或未来的日期');
+      }
+      if (studied.contains(d)) {
+        return const CoverDayResult.failure('当天已有打卡记录，无需覆盖');
+      }
+      return const CoverDayResult.failure('该日已被冻结或补签过');
+    }
+
+    // 再校验额度。
+    if (useFreeze) {
+      final left = StreakGuard.freezesLeftThisMonth(
+        today: today,
+        freezesUsed: state.frozen,
+      );
+      if (left <= 0) {
+        return const CoverDayResult.failure('本月冻结次数已用尽（每月最多 2 次）');
+      }
+    } else {
+      if (state.repairCards <= 0) {
+        return const CoverDayResult.failure('补签卡不足');
       }
     }
-    return streak;
+
+    // 落盘（成功才扣额度）。
+    final prefs = await SharedPreferences.getInstance();
+    if (useFreeze) {
+      final frozen = <DateTime>{...state.frozen, d};
+      await prefs.setString(_kFreezes, _formatDateList(frozen));
+    } else {
+      final repaired = <DateTime>{...state.repaired, d};
+      await prefs.setString(_kRepairs, _formatDateList(repaired));
+      await prefs.setInt(_kRepairCards, state.repairCards - 1);
+    }
+    return const CoverDayResult.success();
+  }
+
+  /// 按规则发放补签卡（若达到新的连续天数里程碑）。
+  ///
+  /// 规则见 [StreakGuard.grantRepairCards]：初始 3 张、每连续 7 天 +1、上限 5 张、
+  /// 同一达成点只发一次。返回发放后的补签卡存量；若无可发放则原样返回。
+  ///
+  /// 应在「连续天数刚被（重新）计算」的时机调用（如统计页加载、覆盖成功后刷新）。
+  static Future<int> grantRepairCardsIfDue({required int streakDays}) async {
+    final state = await getStreakGuardState();
+    final res = StreakGuard.grantRepairCards(
+      streakDays: streakDays,
+      grantedMilestones: state.grantedMilestones,
+      repairCards: state.repairCards,
+    );
+    if (res.newlyGranted.isEmpty) return state.repairCards;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kRepairCards, res.repairCards);
+    final granted = <String>{...state.grantedMilestones, ...res.newlyGranted};
+    await prefs.setString(_kGranted, granted.join(','));
+    return res.repairCards;
+  }
+
+  /// 最近 [window] 天内「可被覆盖」的空档日（今天除外）。
+  ///
+  /// 供统计页面板列出候选：既不是真实打卡日、也未被覆盖、且早于今天。
+  static Future<List<DateTime>> getCandidateCoverDays({int window = 7}) async {
+    final today = DateTime.now();
+    final studied = await getStudiedDateSet();
+    final state = await getStreakGuardState();
+    final out = <DateTime>[];
+    for (var i = 1; i <= window; i++) {
+      final d = StreakGuard.dayOnly(today).subtract(Duration(days: i));
+      if (StreakGuard.canCover(
+        day: d,
+        studied: studied,
+        covered: state.covered,
+        today: today,
+      )) {
+        out.add(d);
+      }
+    }
+    return out;
   }
 
   // ============ 预设学习计划 ============
@@ -2850,4 +3017,15 @@ class DatabaseHelper {
     return '${d.year}${p2(d.month)}${p2(d.day)}_'
         '${p2(d.hour)}${p2(d.minute)}${p2(d.second)}';
   }
+}
+
+/// 覆盖结果：成功 = 已扣额度并落盘；失败 = 未改动，[reason] 说明原因。
+///
+/// [success] 即需求中要求的布尔结果，[reason] 承载失败原因（供 UI 置灰提示）。
+class CoverDayResult {
+  const CoverDayResult.success([this.reason = '']) : success = true;
+  const CoverDayResult.failure(this.reason) : success = false;
+
+  final bool success;
+  final String reason;
 }

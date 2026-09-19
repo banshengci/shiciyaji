@@ -6,6 +6,7 @@ import '../widgets/poem_icon.dart';
 import 'monthly_report_page.dart';
 import '../../core/content_quality.dart';
 import '../../core/design_tokens.dart';
+import '../../core/streak_guard.dart';
 import '../../core/theme.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/achievement.dart';
@@ -29,6 +30,11 @@ class _StatsPageState extends State<StatsPage> {
   int _studiedCount = 0;
   int _favoriteCount = 0;
   int _streak = 0;
+  int _repairCards = 0;
+  int _freezesUsedThisMonth = 0;
+
+  /// 补打卡面板里列出的「可覆盖空档日」（最近 7 天）。
+  List<DateTime> _coverCandidates = const <DateTime>[];
   int _noteCount = 0;
   int _notedPoemCount = 0;
   int _totalPoems = 0;
@@ -93,24 +99,42 @@ class _StatsPageState extends State<StatsPage> {
       // 读晚了会先显示 0 再跳变
       ContentQuality.load(),
     ]);
-    if (mounted) {
-      setState(() {
-        _studiedCount = results[0] as int;
-        _favoriteCount = results[1] as int;
-        _streak = results[2] as int;
-        _totalPoems = results[3] as int;
-        _totalAuthors = results[4] as int;
-        _historyCount = results[5] as int;
-        _heatmap = Map<String, int>.from(results[6] as Map);
-        _noteCount = results[7] as int;
-        _notedPoemCount = results[8] as int;
-        _dynastyDist = Map<String, int>.from(results[9] as Map);
-        _authorDist = Map<String, int>.from(results[10] as Map);
-        _favDynastyDist = Map<String, int>.from(results[11] as Map);
-        _overrideCount = results[12] as int;
-        _loading = false;
-      });
+    if (!mounted) return;
+    final streak = results[2] as int;
+    // 连胜守护状态 + 按规则补发补签卡（达到新的连续天数里程碑时）。
+    final guard = await DatabaseHelper.getStreakGuardState();
+    final repairCards = await DatabaseHelper.grantRepairCardsIfDue(
+      streakDays: streak,
+    );
+    if (!mounted) return;
+    setState(() {
+      _studiedCount = results[0] as int;
+      _favoriteCount = results[1] as int;
+      _streak = streak;
+      _totalPoems = results[3] as int;
+      _totalAuthors = results[4] as int;
+      _historyCount = results[5] as int;
+      _heatmap = Map<String, int>.from(results[6] as Map);
+      _noteCount = results[7] as int;
+      _notedPoemCount = results[8] as int;
+      _dynastyDist = Map<String, int>.from(results[9] as Map);
+      _authorDist = Map<String, int>.from(results[10] as Map);
+      _favDynastyDist = Map<String, int>.from(results[11] as Map);
+      _overrideCount = results[12] as int;
+      _repairCards = repairCards;
+      _freezesUsedThisMonth = _countFreezesThisMonth(guard.frozen);
+      _loading = false;
+    });
+  }
+
+  /// 统计 [frozen] 中与当前月份相同的冻结次数（用于「本月冻结 M 次」）。
+  int _countFreezesThisMonth(Set<DateTime> frozen) {
+    final t = DateTime.now();
+    var n = 0;
+    for (final d in frozen) {
+      if (d.year == t.year && d.month == t.month) n++;
     }
+    return n;
   }
 
   @override
@@ -133,6 +157,8 @@ class _StatsPageState extends State<StatsPage> {
                         padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
                         children: <Widget>[
                           _buildOverview(c),
+                          const SizedBox(height: 12),
+                          _buildStreakGuard(c),
                           const SizedBox(height: 10),
                           _metaLine(c),
                           _contentLine(c),
@@ -271,6 +297,181 @@ class _StatsPageState extends State<StatsPage> {
         ],
       ),
     );
+  }
+
+  // ── 打卡韧性：补签卡 / 本月冻结额度 + 补打卡入口 ──────────────────
+  //
+  // 文案如实说明：只影响连续天数统计，不向 study_records 写入任何记录。
+  Widget _buildStreakGuard(ShiciColors c) {
+    final freezesLeft = (StreakGuard.freezesPerMonth - _freezesUsedThisMonth)
+        .clamp(0, StreakGuard.freezesPerMonth);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      decoration: BoxDecoration(
+        color: c.silk,
+        borderRadius: BorderRadius.circular(ShiciSize.rLg),
+        border: Border.all(color: c.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              PoemIcon(PoemIcons.streak, size: 16, color: c.indigo),
+              const SizedBox(width: 6),
+              Text('打卡韧性',
+                  style: ShiciText.heading.copyWith(fontSize: 14, color: c.ink)),
+              const Spacer(),
+              TextButton(
+                onPressed: _openStreakGuardPanel,
+                child: Text('补一次',
+                    style: TextStyle(fontSize: 12, color: c.cinnabar)),
+              ),
+            ],
+          ),
+          Text(
+            '补签卡 $_repairCards 张 · 本月冻结 $freezesLeft/${StreakGuard.freezesPerMonth} 次',
+            style: ShiciText.body.copyWith(fontSize: 13, color: c.inkSoft),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '补签 / 冻结只影响连续天数统计，不会伪造学习记录。',
+            style: ShiciText.caption.copyWith(fontSize: 11, color: c.inkFaint),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 覆盖成功后刷新：连续天数、补签卡、本月冻结次数（并按规则补发卡）。
+  Future<void> _reloadStreakGuard() async {
+    final streak = await DatabaseHelper.getStreakDays();
+    await DatabaseHelper.grantRepairCardsIfDue(streakDays: streak);
+    final guard = await DatabaseHelper.getStreakGuardState();
+    if (!mounted) return;
+    setState(() {
+      _streak = streak;
+      _repairCards = guard.repairCards;
+      _freezesUsedThisMonth = _countFreezesThisMonth(guard.frozen);
+    });
+  }
+
+  String _fmtDay(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// 补打卡面板：列出最近 7 天里可覆盖的空档日，供「补签」或「冻结」。
+  Future<void> _openStreakGuardPanel() async {
+    final c = ShiciColors.of(context);
+    _coverCandidates = await DatabaseHelper.getCandidateCoverDays();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: c.paper,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheet) {
+          final freezesLeft =
+              (StreakGuard.freezesPerMonth - _freezesUsedThisMonth)
+                  .clamp(0, StreakGuard.freezesPerMonth);
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text('补打卡',
+                      style: ShiciText.heading
+                          .copyWith(fontSize: 16, color: c.ink)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '只影响连续天数统计，不会伪造学习记录。'
+                    '补签卡 $_repairCards 张 · 本月冻结 $freezesLeft/${StreakGuard.freezesPerMonth} 次',
+                    style: ShiciText.caption
+                        .copyWith(fontSize: 12, color: c.inkFaint),
+                  ),
+                  const SizedBox(height: 10),
+                  if (_coverCandidates.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text('最近 7 天没有可补的空档日',
+                          style: ShiciText.body
+                              .copyWith(fontSize: 13, color: c.inkSoft)),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _coverCandidates.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(height: 1, color: c.line),
+                        itemBuilder: (_, i) {
+                          final day = _coverCandidates[i];
+                          return Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(_fmtDay(day),
+                                    style: ShiciText.body
+                                        .copyWith(fontSize: 13, color: c.ink)),
+                              ),
+                              TextButton(
+                                onPressed: _repairCards <= 0
+                                    ? null
+                                    : () => _doCover(day, false, setSheet),
+                                child: Text('补签（卡 $_repairCards）',
+                                    style: const TextStyle(fontSize: 12)),
+                              ),
+                              TextButton(
+                                onPressed: freezesLeft <= 0
+                                    ? null
+                                    : () => _doCover(day, true, setSheet),
+                                child: const Text('冻结',
+                                    style: TextStyle(fontSize: 12)),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(sheetCtx).pop(),
+                      child: const Text('关闭'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 执行一次覆盖（[useFreeze] = true 走冻结额度，false 走补签卡）。
+  ///
+  /// 失败时如实弹出原因（不改动任何状态）；成功后刷新面板与页面数据。
+  Future<void> _doCover(
+    DateTime day,
+    bool useFreeze,
+    void Function(void Function()) setSheet,
+  ) async {
+    final res = await DatabaseHelper.coverDay(day, useFreeze: useFreeze);
+    if (!mounted) return;
+    final label = useFreeze ? '冻结' : '补签';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(res.success ? '已$label ${_fmtDay(day)}' : res.reason),
+      ),
+    );
+    if (!res.success) return;
+    await _reloadStreakGuard();
+    final refreshed = await DatabaseHelper.getCandidateCoverDays();
+    if (!mounted) return;
+    setSheet(() => _coverCandidates = refreshed);
   }
 
   /// 概览卡下方辅助行（画布未画，用于承载诗词库总量等既有信息）
