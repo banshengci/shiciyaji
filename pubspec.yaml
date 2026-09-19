@@ -35,6 +35,7 @@ flutter:
     - assets/data/t2s_mapping.json
     - assets/data/s2t_mapping.json
     - assets/data/content_quality.json
+    - assets/data/prosody/
     - assets/data/packs/tangshi.json
     - assets/data/packs/songci.json
     - assets/data/packs/xiaoxue.json

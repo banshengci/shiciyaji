@@ -26,6 +26,8 @@ import 'create_plan_page.dart';
 import 'recall_quiz_page.dart';
 import 'poem_card_page.dart';
 import 'copy_practice_page.dart';
+import '../widgets/prosody_view.dart';
+import 'rhyme_query_page.dart';
 
 /// 诗词详情页：原文/注释/译文/赏析，沉浸式阅读
 class PoemDetailPage extends StatefulWidget {
@@ -54,6 +56,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   String _fontFamily = 'serif';
   bool _traditionalChinese = false;
   bool _showPinyin = false;
+  bool _showProsody = false;
 
   /// 根据繁简设置转换文本
   /// 默认模式（简体）：先确保简体（兜底旧数据可能含繁体字）
@@ -636,6 +639,16 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                         icon: const Icon(Icons.brush, size: 22),
                         tooltip: '抄写',
                       ),
+                      // 格律：平仄·韵脚标注开关。打开时正文改用 ProsodyView 渲染。
+                      IconButton(
+                        onPressed: () =>
+                            setState(() => _showProsody = !_showProsody),
+                        icon: PoemIcon(
+                          Icons.graphic_eq,
+                          color: _showProsody ? pal.cinnabar : null,
+                        ),
+                        tooltip: _showProsody ? '关闭格律标注' : '格律标注',
+                      ),
                     ],
                   ),
             body: GestureDetector(
@@ -701,7 +714,32 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                       // ── 对照读法（05 赏析 · 注释卡）─────────────────────────────
                       // 整块换掉「正文 + 注释 / 译文 / 赏析」这套分节：05 卡本身就是
                       // 「逐联原文 + 译文 + 赏析 + 注释」的一体化排版，两套并存只会重复。
-                      if (_parallel) ...[
+                      // ── 格律标注（平仄·韵脚）─────────────────────────────────────
+                      // 打开「格律」开关时，正文改用 ProsodyView 渲染带标注的版式。
+                      // 沉浸模式下不显示（沉浸优先「只有诗」，不叠任何对照层）。
+                      if (_showProsody && !_immersive) ...[
+                        ProsodyView(
+                          content: _t(poem.content),
+                          fontSize: _fontSize,
+                        ),
+                        const SizedBox(height: 12),
+                        // 面板内入口：跳转到韵部查询页。
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const RhymeQueryPage(),
+                              ),
+                            ),
+                            icon: const PoemIcon(Icons.search, size: 16),
+                            label: const Text('韵部查询',
+                                style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _buildDivider(theme),
+                      ] else if (_parallel) ...[
                         GestureDetector(
                           onLongPress: _showPoemActions,
                           // 换一份带覆盖内容的 Poem：对照卡是自己拆译文/赏析的，
@@ -727,10 +765,10 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                                 fontSize: _fontSize,
                                 fontFamily: _fontFamily,
                                 ink: _immersive
-                                    ? Colors.white
+                                    ? pal.onDeep
                                     : theme.colorScheme.onSurface,
                                 inkSoft: _immersive
-                                    ? Colors.white70
+                                    ? pal.onDeep.withOpacity(0.7)
                                     : theme.colorScheme.outline,
                               ),
                               const SizedBox(height: 20),
@@ -739,7 +777,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                                 fontSize: _fontSize,
                                 fontFamily: _fontFamily,
                                 textColor: _immersive
-                                    ? Colors.white
+                                    ? pal.onDeep
                                     : theme.colorScheme.onSurface,
                                 highlightColor: pal.cinnabar,
                                 highlightLine:
@@ -1315,6 +1353,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   /// 相关篇目：同作者其他作品 / 同题 —— 方便对比读
   Widget _buildRelatedSection(ThemeData theme) {
     final c = ShiciColors.of(context);
+    // 卡片是固定高度的，全局字号一放大就会把内容顶出去
+    // （实测 90/100/115/130% 分别溢出 3/3/15/24px）。让高度跟着字号让位。
+    final t = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1339,7 +1380,7 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 72,
+          height: 72 * t + 10,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _related.length,

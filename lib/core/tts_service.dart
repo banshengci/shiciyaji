@@ -1,13 +1,22 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// TTS 朗读服务：封装系统 TTS，支持播放/暂停/停止/倍速，
 /// 以及逐句跟读（[speakVerses]）。
+///
+/// **插件缺失时降级为静默**：部分平台（以及单元测试环境）没有注册 TTS 插件，
+/// 调用会抛 [MissingPluginException]。此时 [isAvailable] 变为 false，
+/// 所有朗读方法变成空操作，而不是把异常抛给界面。
 class TtsService {
   static TtsService? _instance;
   late FlutterTts _tts;
   bool _initialized = false;
+
+  /// 运行环境是否真的有可用的 TTS 插件。初始化时探测，失败即置 false。
+  bool _available = true;
   bool _isPlaying = false;
   double _rate = 1.0; // 0.5 - 2.0
   String? _currentText;
@@ -30,30 +39,43 @@ class TtsService {
 
   Future<void> init() async {
     if (_initialized) return;
-    _tts = FlutterTts();
-    await _tts.setLanguage('zh-CN');
-    await _tts.setSpeechRate(0.5); // 系统默认速率（0.0-1.0，我们映射为0.5x-2.0x）
-    await _tts.setVolume(1.0);
-    await _tts.setPitch(1.0);
-
-    _tts.setStartHandler(() {
-      _isPlaying = true;
-    });
-    _tts.setCompletionHandler(() {
-      _isPlaying = false;
-      _currentText = null;
-      // 逐句模式靠这个信号推进到下一句
-      if (_utteranceDone?.isCompleted == false) _utteranceDone!.complete();
-    });
-    _tts.setErrorHandler((msg) {
-      _isPlaying = false;
-      _currentText = null;
-      // 出错也必须放行，否则跟读会卡在这一句上等到超时
-      if (_utteranceDone?.isCompleted == false) _utteranceDone!.complete();
-    });
-
+    // 先占位：即便初始化失败也不再重试（插件不会中途出现），
+    // 否则每次调用都会重新抛一次 MissingPluginException。
     _initialized = true;
+    try {
+      _tts = FlutterTts();
+      await _tts.setLanguage('zh-CN');
+      await _tts.setSpeechRate(0.5); // 系统默认速率（0.0-1.0，我们映射为0.5x-2.0x）
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
+
+      _tts.setStartHandler(() {
+        _isPlaying = true;
+      });
+      _tts.setCompletionHandler(() {
+        _isPlaying = false;
+        _currentText = null;
+        // 逐句模式靠这个信号推进到下一句
+        if (_utteranceDone?.isCompleted == false) _utteranceDone!.complete();
+      });
+      _tts.setErrorHandler((msg) {
+        _isPlaying = false;
+        _currentText = null;
+        // 出错也必须放行，否则跟读会卡在这一句上等到超时
+        if (_utteranceDone?.isCompleted == false) _utteranceDone!.complete();
+      });
+    } on MissingPluginException {
+      // 平台/测试环境没有 TTS 插件：降级为静默，不把异常抛给界面
+      _available = false;
+      debugPrint('TTS 插件不可用，朗读降级为静默');
+    } catch (e) {
+      _available = false;
+      debugPrint('TTS 初始化失败，朗读降级为静默：$e');
+    }
   }
+
+  /// 当前环境是否真的有可用的 TTS（界面据此决定要不要显示朗读入口）
+  bool get isAvailable => _available;
 
   bool get isPlaying => _isPlaying;
   double get rate => _rate;
@@ -65,6 +87,7 @@ class TtsService {
   /// 朗读文本
   Future<void> speak(String text) async {
     await init();
+    if (!_available) return;
     if (_isPlaying) {
       await _tts.stop();
     }
@@ -119,6 +142,8 @@ class TtsService {
     void Function()? onFinished,
   }) async {
     await init();
+    // 无 TTS 时直接退出，且**不**回调 onFinished —— 不谎报「读完了」
+    if (!_available) return;
     final token = ++_sequenceToken;
     await _tts.stop();
     _isPlaying = false;
@@ -172,6 +197,7 @@ class TtsService {
   /// 暂停/恢复
   Future<void> pause() async {
     await init();
+    if (!_available) return;
     await _tts.pause();
     _isPlaying = false;
   }
@@ -180,7 +206,7 @@ class TtsService {
   Future<void> stop() async {
     await init();
     _sequenceToken++; // 取消逐句循环
-    await _tts.stop();
+    if (_available) await _tts.stop();
     _isPlaying = false;
     _currentText = null;
   }

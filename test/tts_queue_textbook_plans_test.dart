@@ -43,8 +43,8 @@ void main() {
       final q = TtsPlayQueue.instance;
       await q.start(
         [
-          TtsQueueItem(poemId: 1, title: 'A', content: 'a'),
-          TtsQueueItem(poemId: 2, title: 'B', content: 'b'),
+          const TtsQueueItem(poemId: 1, title: 'A', content: 'a'),
+          const TtsQueueItem(poemId: 2, title: 'B', content: 'b'),
         ],
         label: 't',
       );

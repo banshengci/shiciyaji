@@ -140,7 +140,7 @@ class _ListenWritePageState extends State<ListenWritePage> {
     return Scaffold(
       backgroundColor: c.paper,
       appBar: AppBar(
-        title: Text('听写 · ${_title}',
+        title: Text('听写 · $_title',
             style: const TextStyle(fontFamily: ShiciFont.serif)),
         actions: [
           IconButton(
