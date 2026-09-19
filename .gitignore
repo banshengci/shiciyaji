@@ -104,6 +104,10 @@ assets/data/poems_v2.json
 # 数据文件的本地备份
 assets/data/*.bak
 
+# 译文校订的一次性 QA 数据（本地保留备查，不入库）
+tools/*_translation_patches.json
+tools/suspect_translations.json
+
 tools/gushici_cache/
 tools/baidu_hanyu_cache/
 tools/_fetch_log.txt

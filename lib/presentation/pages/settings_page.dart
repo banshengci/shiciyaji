@@ -646,16 +646,30 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
                       color: theme.colorScheme.primary),
                   title: const Text('字体选择'),
                   // 用 Wrap 而非 Row：四档字体在 130% 全局字号下会撑破一行
-                  subtitle: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _fontChip('宋体', 'serif', theme),
-                      _fontChip('楷体', 'KaiTi', theme),
-                      _fontChip('黑体', 'sans-serif', theme),
-                      // 书法体：MaShanZheng 已随包注册（与标题字、分享卡同款字体），
-                      // 短诗与抄写场景可用；不新增字体二进制
-                      _fontChip('书法', ShiciFont.calligraphy, theme),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _fontChip('宋体', 'serif', theme),
+                          _fontChip('楷体', 'KaiTi', theme),
+                          _fontChip('黑体', 'sans-serif', theme),
+                          // 书法体：MaShanZheng 已随包注册（与标题字、分享卡同款字体），
+                          // 短诗与抄写场景可用；不新增字体二进制
+                          _fontChip('书法', ShiciFont.calligraphy, theme),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // 如实说明：楷体/黑体是系统字体名，不是随包内置，
+                      // 设备没装该字体时会被系统回退 —— 免得用户以为设置没生效
+                      Text(
+                        '楷体 / 黑体 取系统字体，部分设备（如未预装楷体的安卓机）会回退为默认字体；'
+                        '宋体与书法体随包内置，各端一致。',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(fontSize: 11, height: 1.4),
+                      ),
                     ],
                   ),
                 ),
