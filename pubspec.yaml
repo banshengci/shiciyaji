@@ -1,7 +1,7 @@
 name: shici_yaji
 description: "诗词雅集 - 离线古诗词学习与欣赏应用"
 publish_to: 'none'
-version: 1.2.0+4
+version: 1.3.0+5
 
 environment:
   sdk: ^3.5.4
@@ -64,7 +64,7 @@ msix_config:
   publisher_display_name: 诗词雅集
   identity_name: cn.shiciyaji.shici_yaji
   publisher: CN=cn.shiciyaji
-  msix_version: 1.2.0.0
+  msix_version: 1.3.0.0
   logo_path: windows/runner/resources/app_icon.ico
   start_menu_icon_path: windows/runner/resources/app_icon.ico
   tile_icon_path: windows/runner/resources/app_icon.ico
