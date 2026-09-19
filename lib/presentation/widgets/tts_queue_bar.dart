@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../core/tts_play_queue.dart';
+import '../../core/tts_service.dart';
 import 'poem_icon.dart';
 
 /// 全局听诗迷你条：队列进行中时贴在主壳底部。
@@ -95,6 +96,53 @@ class TtsQueueBar extends StatelessWidget {
                     onPressed: () => q.clear(),
                     icon: Icon(Icons.close, size: 18, color: c.inkFaint),
                   ),
+                  // 音色选择
+                  IconButton(
+                    tooltip: '选择音色',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _pickVoice(context),
+                    icon: const Icon(Icons.record_voice_over, size: 18),
+                  ),
+                  // 睡眠定时
+                  ValueListenableBuilder<Duration?>(
+                    valueListenable:
+                        TtsService.instance.sleepRemainingNotifier,
+                    builder: (context, remaining, _) {
+                      return PopupMenuButton<Duration?>(
+                        tooltip: '睡眠定时',
+                        child: Icon(
+                          Icons.timer,
+                          size: 18,
+                          color: remaining != null ? c.cinnabar : c.inkSoft,
+                        ),
+                        onSelected: (d) {
+                          if (d == null) {
+                            TtsService.instance.cancelSleepTimer();
+                          } else {
+                            TtsService.instance.startSleepTimer(d);
+                          }
+                        },
+                        itemBuilder: (_) => const <PopupMenuEntry<Duration?>>[
+                          PopupMenuItem<Duration?>(
+                            value: null,
+                            child: Text('关闭定时'),
+                          ),
+                          PopupMenuItem<Duration?>(
+                            value: Duration(minutes: 15),
+                            child: Text('15 分钟后'),
+                          ),
+                          PopupMenuItem<Duration?>(
+                            value: Duration(minutes: 30),
+                            child: Text('30 分钟后'),
+                          ),
+                          PopupMenuItem<Duration?>(
+                            value: Duration(minutes: 60),
+                            child: Text('60 分钟后'),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -102,5 +150,42 @@ class TtsQueueBar extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// 选音色：拉取 [TtsService.availableVoices]，弹出列表让用户挑；
+  /// 若设备不支持（返回空），如实提示「本设备不支持切换音色」，绝不假装能用。
+  Future<void> _pickVoice(BuildContext context) async {
+    final voices = await TtsService.instance.availableVoices();
+    if (!context.mounted) return;
+    if (voices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('本设备不支持切换音色'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    final picked = await showDialog<TtsVoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择音色'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final v in voices)
+                ListTile(
+                  title: Text(v.label),
+                  onTap: () => Navigator.of(ctx).pop(v),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+    await TtsService.instance.selectVoice(picked);
   }
 }

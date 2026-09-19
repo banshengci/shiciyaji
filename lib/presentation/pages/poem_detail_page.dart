@@ -95,6 +95,9 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
   bool _ttsPlaying = false;
   double _ttsRate = 1.0;
 
+  /// 当前选中的朗读音色（null 表示用系统默认，未挑过）
+  TtsVoice? _selectedVoice;
+
   // 逐句跟读
   /// 当前正在念的句（由 [splitVerses] 断出来的片段）
   List<String> _verses = const [];
@@ -1709,6 +1712,73 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
                     .map((r) => PopupMenuItem(value: r, child: Text('${r}x')))
                     .toList(),
               ),
+              // 音色选择
+              IconButton(
+                icon: const Icon(Icons.record_voice_over),
+                onPressed: _pickVoice,
+                tooltip: _selectedVoice != null
+                    ? '音色：${_selectedVoice!.label}'
+                    : '选择音色',
+              ),
+              // 睡眠定时
+              ValueListenableBuilder<Duration?>(
+                valueListenable: _tts.sleepRemainingNotifier,
+                builder: (context, remaining, _) {
+                  final active = remaining != null;
+                  return PopupMenuButton<Duration?>(
+                    tooltip: '睡眠定时',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(Icons.timer,
+                              size: 16, color: active ? c.cinnabar : null),
+                          const SizedBox(width: 4),
+                          Text(
+                            remaining == null
+                                ? '定时'
+                                : _formatDuration(remaining),
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface),
+                          ),
+                        ],
+                      ),
+                    ),
+                    onSelected: (d) {
+                      if (d == null) {
+                        _tts.cancelSleepTimer();
+                      } else {
+                        _tts.startSleepTimer(d);
+                      }
+                    },
+                    itemBuilder: (_) => const <PopupMenuEntry<Duration?>>[
+                      PopupMenuItem<Duration?>(
+                        value: null,
+                        child: Text('关闭定时'),
+                      ),
+                      PopupMenuItem<Duration?>(
+                        value: Duration(minutes: 15),
+                        child: Text('15 分钟后'),
+                      ),
+                      PopupMenuItem<Duration?>(
+                        value: Duration(minutes: 30),
+                        child: Text('30 分钟后'),
+                      ),
+                      PopupMenuItem<Duration?>(
+                        value: Duration(minutes: 60),
+                        child: Text('60 分钟后'),
+                      ),
+                    ],
+                  );
+                },
+              ),
               if (!_following)
                 IconButton(
                   icon: Icon(_ttsPlaying ? Icons.pause : Icons.play_arrow),
@@ -1763,6 +1833,53 @@ class _PoemDetailPageState extends State<PoemDetailPage> {
       _ttsPlaying = false;
       _following = false;
     });
+  }
+
+  /// 选音色：拉取 [TtsService.availableVoices]，弹出列表让用户挑；
+  /// 若设备不支持（返回空），如实提示「本设备不支持切换音色」，绝不假装能用。
+  Future<void> _pickVoice() async {
+    final voices = await _tts.availableVoices();
+    if (!mounted) return;
+    if (voices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('本设备不支持切换音色'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    final picked = await showDialog<TtsVoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择音色'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final v in voices)
+                ListTile(
+                  title: Text(v.label),
+                  onTap: () => Navigator.of(ctx).pop(v),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await _tts.selectVoice(picked);
+    setState(() => _selectedVoice = picked);
+  }
+
+  /// 把剩余时间格式化为 mm:ss，供定时按钮显示倒计时。
+  String _formatDuration(Duration d) {
+    final total = d.inSeconds;
+    final m = total ~/ 60;
+    final s = total % 60;
+    return '${m.toString().padLeft(2, '0')}:'
+        '${s.toString().padLeft(2, '0')}';
   }
 
   Future<void> _toggleFavorite() async {
