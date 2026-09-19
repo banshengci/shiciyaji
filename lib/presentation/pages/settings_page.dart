@@ -645,13 +645,17 @@ class _SettingsDetailPageState extends State<SettingsDetailPage> {
                   leading: Icon(Icons.font_download_outlined,
                       color: theme.colorScheme.primary),
                   title: const Text('字体选择'),
-                  subtitle: Row(
+                  // 用 Wrap 而非 Row：四档字体在 130% 全局字号下会撑破一行
+                  subtitle: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       _fontChip('宋体', 'serif', theme),
-                      const SizedBox(width: 8),
                       _fontChip('楷体', 'KaiTi', theme),
-                      const SizedBox(width: 8),
                       _fontChip('黑体', 'sans-serif', theme),
+                      // 书法体：MaShanZheng 已随包注册（与标题字、分享卡同款字体），
+                      // 短诗与抄写场景可用；不新增字体二进制
+                      _fontChip('书法', ShiciFont.calligraphy, theme),
                     ],
                   ),
                 ),
